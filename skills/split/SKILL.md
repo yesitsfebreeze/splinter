@@ -8,6 +8,48 @@ description: Use split MCP tools instead of Read/Grep when working with Rust sou
 `split` MCP server indexes `.rs` files into per-function `.fs` body files under `.split/`.
 Read one function at a time. Watcher auto-syncs both directions (mtime arbitration).
 
+## Installation
+
+**1. Install binary:**
+```bash
+cargo install --git https://github.com/yesitsfebreeze/split
+```
+Requires Rust + `wasm32-wasip1` target:
+```bash
+rustup target add wasm32-wasip1
+```
+
+**2. Add to `.mcp.json` in project root:**
+```json
+{
+  "mcpServers": {
+    "split": {
+      "command": "split",
+      "env": {
+        "SPLIT_EXT": "rs",
+        "SPLIT_SRC_DIR": "src",
+        "SPLIT_INDEX_DIR": ".split",
+        "SPLIT_MAX_LOC": "256"
+      }
+    }
+  }
+}
+```
+
+**3. Bootstrap the index once:**
+```
+index_dir(src_dir="src", index_dir=".split")
+```
+
+**4. Add to `.gitignore`:**
+```
+.split/
+```
+
+Optional: drop a `split.ini` in project root to persist settings without env vars.
+
+---
+
 ## index_dir
 
 Always pass `index_dir=".split"`. Contains both skeletons (`.skel.rs`) and bodies mirroring source tree.
