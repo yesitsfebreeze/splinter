@@ -8,7 +8,7 @@ Instead of loading entire files into context, you load one function at a time. I
 
 Every time an AI reads a source file, it loads the entire thing — imports, structs, every function — even if you only need one. This wastes context window on code that isn't relevant to the task.
 
-`split` fixes this by pre-indexing each source file into per-function body files under `.index/`. The AI loads a function map (cheap), picks what it needs, reads only that (cheap), and edits it in place — the watcher stitches it back to the original source file automatically.
+`split` fixes this by pre-indexing each source file into per-function body files under `.split/`. The AI loads a function map (cheap), picks what it needs, reads only that (cheap), and edits it in place — the watcher stitches it back to the original source file automatically.
 
 ## Token savings
 
@@ -20,9 +20,9 @@ Every time an AI reads a source file, it loads the entire thing — imports, str
 ## How it works
 
 ```
-src/agent/session.rs   →   .index/src/agent/session.skel.rs   (structure)
-                           .index/src/agent/session/run_turn.fs
-                           .index/src/agent/session/agent_turn.fs
+src/agent/session.rs   →   .split/src/agent/session.skel.rs   (structure)
+                           .split/src/agent/session/run_turn.fs
+                           .split/src/agent/session/agent_turn.fs
                            ...
 ```
 
@@ -56,7 +56,7 @@ Add to `.mcp.json`:
       "env": {
         "SPLIT_EXT": "rs",
         "SPLIT_SRC_DIR": "src",
-        "SPLIT_INDEX_DIR": ".index"
+        "SPLIT_INDEX_DIR": ".split"
       }
     }
   }
@@ -65,10 +65,10 @@ Add to `.mcp.json`:
 
 Bootstrap the index once:
 ```
-index_dir(src_dir="src", index_dir=".index")
+index_dir(src_dir="src", index_dir=".split")
 ```
 
-Add `.index/` to `.gitignore` — it's generated, not source of truth.
+Add `.split/` to `.gitignore` — it's generated, not source of truth.
 
 ## LSP compatibility
 
@@ -85,7 +85,7 @@ Place a `split.ini` in your project root. Safe to commit — no secrets.
 ```ini
 SPLIT_EXT         = rs
 SPLIT_SRC_DIR     = src
-SPLIT_INDEX_DIR   = .index
+SPLIT_INDEX_DIR   = .split
 SPLIT_DEBOUNCE_MS = 120000
 ```
 

@@ -32,7 +32,7 @@ fn cfg(key: &str, ini: &HashMap<String, String>, default: &str) -> String {
 async fn main() -> Result<()> {
     let ini = load_ini("split.ini");
 
-    let index_dir = PathBuf::from(cfg("SPLIT_INDEX_DIR", &ini, ".index"));
+    let index_dir = PathBuf::from(cfg("SPLIT_INDEX_DIR", &ini, ".split"));
     let src_dir   = PathBuf::from(cfg("SPLIT_SRC_DIR",   &ini, "src"));
     let ext       = cfg("SPLIT_EXT",         &ini, "rs");
     let _debounce = cfg("SPLIT_DEBOUNCE_MS", &ini, "120000"); // read by watcher via env/ini
