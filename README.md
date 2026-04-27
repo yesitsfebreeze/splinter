@@ -1,4 +1,4 @@
-# split
+# ⠎⠏⠇⠊⠞ split
 
 MCP server that indexes source files at the function level.
 
