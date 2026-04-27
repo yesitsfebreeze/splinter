@@ -1,0 +1,32 @@
+{
+  "name": "split",
+  "version": "0.1.0",
+  "description": "Fn-level code index MCP server. Splits source files into per-function body files for token-efficient navigation. Bidirectional watcher syncs edits.",
+  "author": {
+    "name": "febreeze",
+    "url": "https://github.com/febreeze"
+  },
+  "homepage": "https://github.com/febreeze/split",
+  "repository": "https://github.com/febreeze/split",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "index",
+    "code-navigation",
+    "token-efficient",
+    "rust",
+    "split"
+  ],
+  "mcpServers": {
+    "split": {
+      "command": "split",
+      "args": [],
+      "env": {
+        "SPLIT_EXT": "rs",
+        "SPLIT_INDEX_DIR": ".index",
+        "SPLIT_SRC_DIR": "src"
+      }
+    }
+  },
+  "skills": "./skills/"
+}

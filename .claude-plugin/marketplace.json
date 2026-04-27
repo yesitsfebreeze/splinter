@@ -1,0 +1,32 @@
+{
+  "name": "split",
+  "owner": {
+    "name": "febreeze",
+    "email": "sh@dasistweb.de"
+  },
+  "metadata": {
+    "description": "Claude Code plugins by febreeze",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "split",
+      "source": "./",
+      "description": "Fn-level code index MCP server. Splits source files into per-function body files under .index/. Token-efficient: open_source returns fn map, read_body loads one fn, search_bodies greps 3000+ fns in ~50 tokens. Bidirectional watcher syncs .fs edits back to source.",
+      "version": "0.1.0",
+      "author": {
+        "name": "febreeze"
+      },
+      "category": "development",
+      "keywords": [
+        "mcp",
+        "index",
+        "code-navigation",
+        "token-efficient",
+        "rust",
+        "split",
+        "watcher"
+      ]
+    }
+  ]
+}
