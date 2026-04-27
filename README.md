@@ -20,10 +20,13 @@ Every time an AI reads a source file, it loads the entire thing — imports, str
 ## How it works
 
 ```
-src/agent/session.rs   →   .split/src/agent/session.skel.rs   (structure)
-                           .split/src/agent/session/run_turn.fs
-                           .split/src/agent/session/agent_turn.fs
-                           ...
+src/config/parser.rs   →   .split/src/config/parser.skel.rs   (structure)
+                           .split/src/config/parser/parse.fs
+                           .split/src/config/parser/validate.fs
+                           .split/src/config/parser/load_file.fs
+
+data/schema.json       →   .split/data/schema.skel.json        (structure)
+                           .split/data/schema/_body.fs
 ```
 
 - **Skeleton** = imports, struct definitions, fn signatures with `// §ref` placeholders
