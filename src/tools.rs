@@ -8,14 +8,13 @@ pub fn list() -> Value {
     json!([
         {
             "name": "split",
-            "description": "Split a Rust source file into skeleton + per-function body files inside index_dir",
+            "description": "Split a Rust source file into skeleton + per-function body files inside .split/",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "source_path": { "type": "string", "description": "Path to .rs file" },
-                    "index_dir":   { "type": "string", "description": "Root index directory (e.g. .index)" }
+                    "source_path": { "type": "string", "description": "Path to .rs file" }
                 },
-                "required": ["source_path", "index_dir"]
+                "required": ["source_path"]
             }
         },
         {
@@ -35,7 +34,7 @@ pub fn list() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "dir": { "type": "string", "description": "Directory to list (e.g. .index/src/bin/agnt/src/agent/session)" }
+                    "dir": { "type": "string", "description": "Directory to list (e.g. .split/src/bin/agnt/src/agent/session)" }
                 },
                 "required": ["dir"]
             }
@@ -69,11 +68,10 @@ pub fn list() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "src_dir":   { "type": "string", "description": "Root source directory to walk" },
-                    "index_dir": { "type": "string", "description": "Root index directory (e.g. .index)" },
-                    "ext":       { "type": "string", "description": "File extension to index (default: rs)" }
+                    "src_dir": { "type": "string", "description": "Root source directory to walk" },
+                    "ext":     { "type": "string", "description": "File extension to index (default: rs)" }
                 },
-                "required": ["src_dir", "index_dir"]
+                "required": ["src_dir"]
             }
         },
         {
@@ -83,22 +81,20 @@ pub fn list() -> Value {
                 "type": "object",
                 "properties": {
                     "source_path": { "type": "string", "description": "Path to source file" },
-                    "index_dir":   { "type": "string", "description": "Root index directory (e.g. .index)" },
                     "ext":         { "type": "string", "description": "File extension (default: rs)" }
                 },
-                "required": ["source_path", "index_dir"]
+                "required": ["source_path"]
             }
         },
         {
             "name": "search_bodies",
-            "description": "Search across all body (.fs) files in index_dir for a pattern. Returns matching lines as file:line: content.",
+            "description": "Search across all body (.fs) files for a pattern. Returns matching lines as file:line: content.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "index_dir": { "type": "string" },
-                    "query":     { "type": "string", "description": "Case-insensitive substring to search for" }
+                    "query": { "type": "string", "description": "Case-insensitive substring to search for" }
                 },
-                "required": ["index_dir", "query"]
+                "required": ["query"]
             }
         },
         {
@@ -107,10 +103,9 @@ pub fn list() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "index_dir": { "type": "string" },
-                    "max_loc":   { "type": "number", "description": "Line threshold (default: SPLIT_MAX_LOC env or 256)" }
+                    "max_loc": { "type": "number", "description": "Line threshold (default: SPLIT_MAX_LOC env or 256)" }
                 },
-                "required": ["index_dir"]
+                "required": []
             }
         }
     ])
@@ -120,14 +115,18 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
     match name {
         "split" => {
             let src = PathBuf::from(str_arg(&args, "source_path")?);
-            let index_dir = PathBuf::from(str_arg(&args, "index_dir")?);
+            let index_dir = PathBuf::from(".split");
             let skel_path = stitcher::skeleton_path(&src, &index_dir);
-            if let Some(p) = skel_path.parent() { std::fs::create_dir_all(p)?; }
+            if let Some(p) = skel_path.parent() {
+                std::fs::create_dir_all(p)?;
+            }
             let (skeleton, bodies) = splitter::split(&src, &index_dir)?;
             std::fs::write(&skel_path, &skeleton)?;
             let mut out = format!("skeleton: {}\n", skel_path.display());
             for b in &bodies {
-                if let Some(p) = b.path.parent() { std::fs::create_dir_all(p)?; }
+                if let Some(p) = b.path.parent() {
+                    std::fs::create_dir_all(p)?;
+                }
                 std::fs::write(&b.path, &b.content)?;
                 out.push_str(&format!("  body: {}\n", b.path.display()));
             }
@@ -153,7 +152,13 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
             }
             Ok(entries
                 .iter()
-                .map(|(sz, p)| format!("{:8}  {}", sz, p.file_stem().unwrap_or_default().to_string_lossy()))
+                .map(|(sz, p)| {
+                    format!(
+                        "{:8}  {}",
+                        sz,
+                        p.file_stem().unwrap_or_default().to_string_lossy()
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("\n"))
         }
@@ -164,7 +169,9 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
         "write_body" => {
             let path = PathBuf::from(str_arg(&args, "path")?);
             let content = str_arg(&args, "content")?;
-            if let Some(p) = path.parent() { std::fs::create_dir_all(p)?; }
+            if let Some(p) = path.parent() {
+                std::fs::create_dir_all(p)?;
+            }
             std::fs::write(&path, content)?;
             if let Some(skel) = skeleton_for_body_path(&path) {
                 let output = stitcher::stitch(&skel)?;
@@ -177,7 +184,7 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
         }
         "index_dir" => {
             let src_dir = PathBuf::from(str_arg(&args, "src_dir")?);
-            let index_dir = PathBuf::from(str_arg(&args, "index_dir")?);
+            let index_dir = PathBuf::from(".split");
             let ext = args["ext"].as_str().unwrap_or("rs");
             std::fs::create_dir_all(&index_dir)?;
             let mut files_indexed = 0u32;
@@ -191,10 +198,14 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
                 }
                 match splitter::split_for_ext(&src, &index_dir, ext) {
                     Ok((skeleton, bodies)) => {
-                        if let Some(p) = skel_path.parent() { std::fs::create_dir_all(p)?; }
+                        if let Some(p) = skel_path.parent() {
+                            std::fs::create_dir_all(p)?;
+                        }
                         std::fs::write(&skel_path, &skeleton)?;
                         for b in &bodies {
-                            if let Some(p) = b.path.parent() { std::fs::create_dir_all(p)?; }
+                            if let Some(p) = b.path.parent() {
+                                std::fs::create_dir_all(p)?;
+                            }
                             std::fs::write(&b.path, &b.content)?;
                         }
                         bodies_total += bodies.len() as u32;
@@ -209,15 +220,19 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
         }
         "open_source" => {
             let src = PathBuf::from(str_arg(&args, "source_path")?);
-            let index_dir = PathBuf::from(str_arg(&args, "index_dir")?);
+            let index_dir = PathBuf::from(".split");
             let ext = args["ext"].as_str().unwrap_or("rs");
             let skel_path = stitcher::skeleton_path(&src, &index_dir);
             if !skel_path.exists() {
                 let (skeleton, bodies) = splitter::split_for_ext(&src, &index_dir, ext)?;
-                if let Some(p) = skel_path.parent() { std::fs::create_dir_all(p)?; }
+                if let Some(p) = skel_path.parent() {
+                    std::fs::create_dir_all(p)?;
+                }
                 std::fs::write(&skel_path, &skeleton)?;
                 for b in &bodies {
-                    if let Some(p) = b.path.parent() { std::fs::create_dir_all(p)?; }
+                    if let Some(p) = b.path.parent() {
+                        std::fs::create_dir_all(p)?;
+                    }
                     std::fs::write(&b.path, &b.content)?;
                 }
             }
@@ -232,11 +247,18 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
                 Vec::new()
             };
             if entries.is_empty() {
-                return Ok(format!("skeleton: {} (no function bodies extracted)", skel_path.display()));
+                return Ok(format!(
+                    "skeleton: {} (no function bodies extracted)",
+                    skel_path.display()
+                ));
             }
             entries.sort_by(|a, b| b.0.cmp(&a.0));
             let max_loc = max_loc_threshold();
-            let mut out = format!("skeleton: {}\nbodies:   {}\n", skel_path.display(), file_impl_dir.display());
+            let mut out = format!(
+                "skeleton: {}\nbodies:   {}\n",
+                skel_path.display(),
+                file_impl_dir.display()
+            );
             for (_sz, p) in &entries {
                 let fn_name = p.file_stem().unwrap_or_default().to_string_lossy();
                 let loc = count_body_loc(p);
@@ -246,7 +268,7 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
             Ok(out.trim_end().to_string())
         }
         "search_bodies" => {
-            let index_dir = PathBuf::from(str_arg(&args, "index_dir")?);
+            let index_dir = PathBuf::from(".split");
             let query = str_arg(&args, "query")?.to_lowercase();
             let mut results = Vec::new();
             let mut paths = walk_fs_files(&index_dir);
@@ -254,7 +276,9 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
             for path in paths {
                 let content = std::fs::read_to_string(&path)?;
                 for (i, line) in content.lines().enumerate() {
-                    if line.starts_with("// §") { continue; }
+                    if line.starts_with("// §") {
+                        continue;
+                    }
                     if line.to_lowercase().contains(&query) {
                         results.push(format!("{}:{}: {}", path.display(), i + 1, line));
                     }
@@ -267,24 +291,40 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
             }
         }
         "find_large" => {
-            let index_dir = PathBuf::from(str_arg(&args, "index_dir")?);
-            let max_loc = args["max_loc"].as_u64().map(|n| n as usize).unwrap_or_else(max_loc_threshold);
+            let index_dir = PathBuf::from(".split");
+            let max_loc = args["max_loc"]
+                .as_u64()
+                .map(|n| n as usize)
+                .unwrap_or_else(max_loc_threshold);
             let mut hits: Vec<(usize, PathBuf)> = walk_fs_files(&index_dir)
                 .into_iter()
                 .filter_map(|p| {
                     let loc = count_body_loc(&p);
-                    if loc > max_loc { Some((loc, p)) } else { None }
+                    if loc > max_loc {
+                        Some((loc, p))
+                    } else {
+                        None
+                    }
                 })
                 .collect();
             hits.sort_by(|a, b| b.0.cmp(&a.0));
             if hits.is_empty() {
                 return Ok(format!("no functions exceed {max_loc} loc"));
             }
-            Ok(hits.iter()
+            Ok(hits
+                .iter()
                 .map(|(loc, p)| {
                     let name = p.file_stem().unwrap_or_default().to_string_lossy();
                     let rel = p.strip_prefix(&index_dir).unwrap_or(p);
-                    format!("⚠ {loc:6} loc  {}", rel.with_extension("").display().to_string().replace('\\', "/") + "/" + &name)
+                    format!(
+                        "⚠ {loc:6} loc  {}",
+                        rel.with_extension("")
+                            .display()
+                            .to_string()
+                            .replace('\\', "/")
+                            + "/"
+                            + &name
+                    )
                 })
                 .collect::<Vec<_>>()
                 .join("\n"))
@@ -307,12 +347,16 @@ fn count_body_loc(path: &Path) -> usize {
 }
 
 fn str_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str> {
-    args[key].as_str().ok_or_else(|| anyhow!("missing arg: {key}"))
+    args[key]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing arg: {key}"))
 }
 
 fn walk_files(dir: &Path, ext: &str) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let Ok(rd) = std::fs::read_dir(dir) else { return out };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return out;
+    };
     for entry in rd.filter_map(|e| e.ok()) {
         let path = entry.path();
         if path.is_dir() {
@@ -328,7 +372,9 @@ fn walk_files(dir: &Path, ext: &str) -> Vec<PathBuf> {
 
 fn walk_fs_files(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let Ok(rd) = std::fs::read_dir(dir) else { return out };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return out;
+    };
     for entry in rd.filter_map(|e| e.ok()) {
         let path = entry.path();
         if path.is_dir() {
@@ -345,5 +391,9 @@ fn skeleton_for_body_path(body: &Path) -> Option<PathBuf> {
     let dir_name = fn_dir.file_name()?;
     let parent = fn_dir.parent()?;
     let skel = parent.join(format!("{}.skel.rs", dir_name.to_string_lossy()));
-    if skel.exists() { Some(skel) } else { None }
+    if skel.exists() {
+        Some(skel)
+    } else {
+        None
+    }
 }
