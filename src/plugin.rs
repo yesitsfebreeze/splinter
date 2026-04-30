@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use wasmtime::{Engine, Linker, Module, Store};
-use wasmtime_wasi::preview1;
+use wasmtime_wasi::p1;
 
 use crate::splitter::BodyFile;
 
@@ -24,7 +24,7 @@ impl Default for Meta {
 }
 
 struct Ctx {
-    wasi: wasmtime_wasi::preview1::WasiP1Ctx,
+    wasi: wasmtime_wasi::p1::WasiP1Ctx,
 }
 
 pub fn list() -> Vec<(String, String)> {
@@ -116,7 +116,7 @@ pub fn meta_for_ext(ext: &str) -> Meta {
 pub fn load_meta(wasm: &[u8]) -> Result<Meta> {
     let engine = Engine::default();
     let mut linker: Linker<Ctx> = Linker::new(&engine);
-    preview1::add_to_linker_sync(&mut linker, |c| &mut c.wasi)?;
+    p1::add_to_linker_sync(&mut linker, |c| &mut c.wasi)?;
 
     let wasi = wasmtime_wasi::WasiCtxBuilder::new().build_p1();
     let mut store = Store::new(&engine, Ctx { wasi });
@@ -174,7 +174,7 @@ pub fn split(
 fn run_wasm(wasm: &[u8], input: &str) -> Result<Vec<u8>> {
     let engine = Engine::default();
     let mut linker: Linker<Ctx> = Linker::new(&engine);
-    preview1::add_to_linker_sync(&mut linker, |c| &mut c.wasi)?;
+    p1::add_to_linker_sync(&mut linker, |c| &mut c.wasi)?;
 
     let wasi = wasmtime_wasi::WasiCtxBuilder::new().build_p1();
     let mut store = Store::new(&engine, Ctx { wasi });
