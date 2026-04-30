@@ -8,7 +8,9 @@ Instead of loading entire files into context, you load one function at a time. I
 
 Every time an AI reads a source file, it loads the entire thing — imports, structs, every function — even if you only need one. This wastes context window on code that isn't relevant to the task.
 
-`split` fixes this by pre-indexing each source file into per-function body files under `.split/`. The AI loads a function map (cheap), picks what it needs, reads only that (cheap), and edits it in place — the watcher stitches it back to the original source file automatically.
+`split` fixes this by pre-indexing each source file into per-function body files under `.split/`. The AI loads a function map (cheap), picks what it needs, reads only that (cheap), then edits the original source file with normal tools. The watcher re-splits whenever the source changes.
+
+**Source = truth. `.split/` = derived cache.** One-way sync. Blow it away anytime; it rebuilds from source.
 
 ## ⚡ Token savings
 
@@ -31,7 +33,7 @@ data/schema.json       →   .split/data/schema.skel.json        (structure)
 
 - **Skeleton** = imports, struct definitions, fn signatures with `// §ref` placeholders
 - **Body files** = one `.fs` file per function
-- **Watcher** = bidirectional sync via mtime: edit `.fs` → stitched to `.rs`; edit `.rs` → re-split to `.fs`
+- **Watcher** = one-way: source change → re-split. `.fs` files are read-only for agents; edit the source instead.
 
 ## 🛠️ Tools
 
@@ -40,7 +42,6 @@ data/schema.json       →   .split/data/schema.skel.json        (structure)
 | `index_dir` | 📂 Bootstrap: split all files in a directory tree |
 | `open_source` | 📖 Open a file: auto-splits on first access, returns fn list sorted by size |
 | `read_body` | 📄 Load one function body |
-| `write_body` | ✏️ Edit a function — auto-stitches back to source |
 | `search_bodies` | 🔍 Grep across all indexed functions |
 | `list_bodies` | 📋 List functions in a directory, sorted by size |
 | `find_large` | ⚠️ Find functions exceeding `SPLIT_MAX_LOC` lines |
@@ -103,14 +104,6 @@ Add to `.gitignore`:
 
 Optional: drop a `split.ini` in the project root instead of env vars — safe to commit.
 
-## 🔌 LSP compatibility
-
-The watcher debounces before stitching `.fs` edits back to `.rs`. The source file is only rewritten once writes settle — not on every intermediate change.
-
-Without debounce, the `.rs` file would contain partial/invalid code mid-edit, causing the language server to report false errors. With debounce, the `.rs` file is always updated with complete, syntactically valid code. LSP stays clean.
-
-Configure debounce via `SPLIT_DEBOUNCE_MS` (default: `120000` — 2 minutes). The long default ensures the source file is only reconstructed once a complete implementation is written, not after each individual function edit.
-
 ## 🔧 Configuration
 
 Place a `split.ini` in your project root. Safe to commit — no secrets.
@@ -119,7 +112,7 @@ Place a `split.ini` in your project root. Safe to commit — no secrets.
 SPLIT_EXT         = rs
 SPLIT_SRC_DIR     = src
 SPLIT_INDEX_DIR   = .split
-SPLIT_DEBOUNCE_MS = 120000
+SPLIT_DEBOUNCE_MS = 500
 SPLIT_MAX_LOC     = 256
 ```
 

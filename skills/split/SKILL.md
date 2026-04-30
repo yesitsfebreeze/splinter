@@ -1,12 +1,14 @@
 ---
 name: split
-description: Use split MCP tools instead of Read/Grep when working with source files. Fn-level index, multi-language via WASM. Auto-splits on first access; watcher syncs bidirectionally.
+description: Use split MCP tools instead of Read/Grep when exploring source. Read-only fn-level index, multi-language via WASM. Watcher rebuilds the index when source changes. Edit happens on the source file via normal tools.
 ---
 
-# split: fn-level code index
+# split: read-only fn-level code index
 
 `split` MCP server indexes source files into per-function `.fs` body files under `.split/`.
-Read one function at a time. Watcher auto-syncs both directions (mtime arbitration).
+Source is the truth. `.split/` is a derived cache. Watcher: source → `.fs` (one-way).
+
+Edit source files with normal tools (Edit/Write). The index catches up.
 
 Multi-language via WASM. Builtins: `rs`, `py`. Add more by dropping `.wasm` into `.split/languages/` (project) or `~/.config/split/languages/` (user). Extensions without a language plugin still work — whole file stored as one body.
 
@@ -16,27 +18,26 @@ Multi-language via WASM. Builtins: `rs`, `py`. Add more by dropping `.wasm` into
 |---|---|
 | `Read file.<ext>` | `open_source(source_path)` → fn list, then `read_body(path)` |
 | `Grep pattern src/` | `search_bodies(query)` |
-| Edit one fn | `open_source` → `read_body` → `write_body` (auto-stitches to source) |
-| `Read file.<ext>` (full file needed) | OK for small files |
+| Edit one fn | `read_body` for context → `Edit` on source path |
 | Find bloated functions | `find_large()` |
 | Discover supported languages | `list_languages()` |
 
 ## Workflow
 
 ### Discover languages
-- `list_languages()` — returns installed extensions + source (builtin/user/project) + comment marker
+- `list_languages()` — installed extensions + source (builtin/user/project) + comment marker
 
 ### Explore
-1. `open_source("src/path/to/file.<ext>")` — returns fn list sorted by size, ⚠ flags functions over `SPLIT_MAX_LOC`
+1. `open_source("src/path/to/file.<ext>")` — fn list sorted by size, ⚠ flags fns over `SPLIT_MAX_LOC`
 2. `read_body(".split/src/path/to/file/fn_name.fs")` — load one fn
 
 ### Search
-- `search_bodies("symbol_name")` — grep 3000+ fns in ~50 tokens
+- `search_bodies("symbol_name")` — grep across all indexed fns
 
 ### Edit
-1. `open_source` → note `bodies:` dir
-2. `read_body` → get current impl
-3. `write_body(path, content)` → watcher stitches back to source
+1. `read_body` to load the fn into context
+2. `Edit` (or `Write`) on the original source file
+3. Watcher re-splits automatically
 
 ### Bootstrap
 If `.split/` is empty:
@@ -48,7 +49,7 @@ If `.split/` is empty:
 |---|---|---|
 | `SPLIT_MAX_LOC` | 256 | Line threshold for ⚠ warnings and `find_large` |
 | `SPLIT_SRC_DIR` | `src` | Source directory for watcher |
-| `SPLIT_DEBOUNCE_MS` | 120000 | Watcher debounce (ms) |
+| `SPLIT_DEBOUNCE_MS` | 500 | Watcher debounce (ms) |
 | `SPLIT_EXT` | `rs` | File extension to index |
 
 ## Token savings

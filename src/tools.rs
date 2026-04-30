@@ -19,17 +19,6 @@ pub fn list() -> Value {
             }
         },
         {
-            "name": "stitch",
-            "description": "Reassemble a .rs file from a skeleton + body files",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "skeleton_path": { "type": "string", "description": "Path to .skel.<ext> file" }
-                },
-                "required": ["skeleton_path"]
-            }
-        },
-        {
             "name": "list_bodies",
             "description": "List body files. Filter + paginate.",
             "inputSchema": {
@@ -57,18 +46,6 @@ pub fn list() -> Value {
                     "limit": { "type": "number", "description": "Max lines to return (default: all)" }
                 },
                 "required": ["path"]
-            }
-        },
-        {
-            "name": "write_body",
-            "description": "Write a body (.fs) file and auto-stitch the parent skeleton back to .rs",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path":    { "type": "string" },
-                    "content": { "type": "string" }
-                },
-                "required": ["path", "content"]
             }
         },
         {
@@ -121,92 +98,8 @@ pub fn list() -> Value {
             }
         },
         {
-            "name": "edit_body",
-            "description": "Anchor-based patch on a body file. Auto-stitches parent.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path":        { "type": "string" },
-                    "old_string":  { "type": "string", "description": "Exact text to find. Must be unique unless replace_all=true." },
-                    "new_string":  { "type": "string" },
-                    "replace_all": { "type": "boolean" }
-                },
-                "required": ["path", "old_string", "new_string"]
-            }
-        },
-        {
-            "name": "append_body",
-            "description": "Append text to body file. Auto-stitches parent.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path":    { "type": "string" },
-                    "content": { "type": "string" }
-                },
-                "required": ["path", "content"]
-            }
-        },
-        {
-            "name": "prepend_body",
-            "description": "Prepend text to body file (after § header). Auto-stitches parent.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path":    { "type": "string" },
-                    "content": { "type": "string" }
-                },
-                "required": ["path", "content"]
-            }
-        },
-        {
-            "name": "rename_body",
-            "description": "Rename body file and update skeleton ref atomically.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path":     { "type": "string" },
-                    "new_name": { "type": "string" }
-                },
-                "required": ["path", "new_name"]
-            }
-        },
-        {
-            "name": "delete_body",
-            "description": "Delete body file and skeleton ref. Auto-stitches.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string" }
-                },
-                "required": ["path"]
-            }
-        },
-        {
             "name": "dry_run_split",
             "description": "Preview split chunk boundaries without writing.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "source_path": { "type": "string" }
-                },
-                "required": ["source_path"]
-            }
-        },
-        {
-            "name": "merge_bodies",
-            "description": "Merge sibling bodies into one. Updates skeleton.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "paths":    { "type": "array", "items": { "type": "string" }, "minItems": 2 },
-                    "new_name": { "type": "string" }
-                },
-                "required": ["paths", "new_name"]
-            }
-        },
-        {
-            "name": "unstitch",
-            "description": "Re-explode .rs back to skeleton + bodies. Inverse of stitch.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -249,12 +142,11 @@ pub fn list() -> Value {
         },
         {
             "name": "diff_body",
-            "description": "Diff body against pre-split origin or last stitched state.",
+            "description": "Diff body file against the function's current region in the source file.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "path":    { "type": "string" },
-                    "against": { "type": "string", "enum": ["origin", "stitched"] }
+                    "path": { "type": "string" }
                 },
                 "required": ["path"]
             }
@@ -311,13 +203,6 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
                 out.push_str(&format!("  body: {}\n", b.path.display()));
             }
             Ok(out)
-        }
-        "stitch" => {
-            let skel = PathBuf::from(str_arg(&args, "skeleton_path")?);
-            let output = stitcher::stitch(&skel)?;
-            let src = stitcher::source_path_from_skel(&skel)?;
-            std::fs::write(&src, &output)?;
-            Ok(format!("stitched: {}", src.display()))
         }
         "list_bodies" => {
             let dir = PathBuf::from(str_arg(&args, "dir")?);
@@ -433,22 +318,6 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
                 total
             ));
             Ok(out)
-        }
-        "write_body" => {
-            let path = PathBuf::from(str_arg(&args, "path")?);
-            let content = str_arg(&args, "content")?;
-            if let Some(p) = path.parent() {
-                std::fs::create_dir_all(p)?;
-            }
-            std::fs::write(&path, content)?;
-            if let Some(skel) = skeleton_for_body_path(&path) {
-                let output = stitcher::stitch(&skel)?;
-                let src = stitcher::source_path_from_skel(&skel)?;
-                std::fs::write(&src, &output)?;
-                Ok(format!("written + stitched: {}", src.display()))
-            } else {
-                Ok(format!("written: {}", path.display()))
-            }
         }
         "index_dir" => {
             let src_dir = PathBuf::from(str_arg(&args, "src_dir")?);
@@ -586,189 +455,6 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
                 .collect::<Vec<_>>()
                 .join("\n"))
         }
-        "edit_body" => {
-            let path = PathBuf::from(str_arg(&args, "path")?);
-            let old_string = str_arg(&args, "old_string")?;
-            let new_string = str_arg(&args, "new_string")?;
-            let replace_all = args["replace_all"].as_bool().unwrap_or(false);
-            let content = std::fs::read_to_string(&path)?;
-            let count = content.matches(old_string).count();
-            if count == 0 {
-                return Err(anyhow!("old_string not found in {}", path.display()));
-            }
-            if count > 1 && !replace_all {
-                return Err(anyhow!(
-                    "old_string matches {count} times in {} — set replace_all=true or provide more context",
-                    path.display()
-                ));
-            }
-            let new_content = if replace_all {
-                content.replace(old_string, new_string)
-            } else {
-                content.replacen(old_string, new_string, 1)
-            };
-            std::fs::write(&path, &new_content)?;
-            stitch_after(&path)
-        }
-        "append_body" => {
-            let path = PathBuf::from(str_arg(&args, "path")?);
-            let content = str_arg(&args, "content")?;
-            let mut existing = std::fs::read_to_string(&path)?;
-            if !existing.ends_with('\n') {
-                existing.push('\n');
-            }
-            existing.push_str(content);
-            std::fs::write(&path, &existing)?;
-            stitch_after(&path)
-        }
-        "prepend_body" => {
-            let path = PathBuf::from(str_arg(&args, "path")?);
-            let content = str_arg(&args, "content")?;
-            let existing = std::fs::read_to_string(&path)?;
-            let new_content = if let Some(nl) = existing.find('\n') {
-                let first_line = &existing[..nl];
-                if stitcher::is_marker_line(first_line) {
-                    let mut s = String::with_capacity(existing.len() + content.len() + 1);
-                    s.push_str(&existing[..=nl]);
-                    s.push_str(content);
-                    if !content.ends_with('\n') {
-                        s.push('\n');
-                    }
-                    s.push_str(&existing[nl + 1..]);
-                    s
-                } else {
-                    let mut s = String::with_capacity(existing.len() + content.len() + 1);
-                    s.push_str(content);
-                    if !content.ends_with('\n') {
-                        s.push('\n');
-                    }
-                    s.push_str(&existing);
-                    s
-                }
-            } else if stitcher::is_marker_line(&existing) {
-                let mut s = existing.clone();
-                if !s.ends_with('\n') {
-                    s.push('\n');
-                }
-                s.push_str(content);
-                s
-            } else {
-                let mut s = String::with_capacity(existing.len() + content.len() + 1);
-                s.push_str(content);
-                if !content.ends_with('\n') {
-                    s.push('\n');
-                }
-                s.push_str(&existing);
-                s
-            };
-            std::fs::write(&path, &new_content)?;
-            stitch_after(&path)
-        }
-        "rename_body" => {
-            let path = PathBuf::from(str_arg(&args, "path")?);
-            let new_name = str_arg(&args, "new_name")?;
-            let old_name = path
-                .file_stem()
-                .ok_or_else(|| anyhow!("invalid path: no file stem"))?
-                .to_string_lossy()
-                .to_string();
-            let parent = path
-                .parent()
-                .ok_or_else(|| anyhow!("invalid path: no parent"))?;
-            let new_path = parent.join(format!("{new_name}.fs"));
-            let skel = skeleton_for_body_path(&path)
-                .ok_or_else(|| anyhow!("skeleton not found for {}", path.display()))?;
-
-            let skel_content = std::fs::read_to_string(&skel)?;
-            let old_ref = splitter::to_slash(&path);
-            let new_ref = splitter::to_slash(&new_path);
-            if !skel_content.contains(&old_ref) {
-                return Err(anyhow!(
-                    "ref {old_ref} not found in skeleton {}",
-                    skel.display()
-                ));
-            }
-            let new_skel = skel_content.replace(&old_ref, &new_ref);
-
-            let body_content = std::fs::read_to_string(&path)?;
-            let comment = stitcher::comment_for_skel(&skel);
-            let mut new_body_lines: Vec<String> = Vec::new();
-            for line in body_content.lines() {
-                if let Some(payload) = stitcher::marker_payload(line) {
-                    if let Some(rest) = payload.strip_prefix("head ") {
-                        if let Some((src, name)) = rest.rsplit_once(' ') {
-                            if name == old_name {
-                                new_body_lines.push(format!("{comment} §head {src} {new_name}"));
-                                continue;
-                            }
-                        }
-                    }
-                    if let Some(rest) = payload.strip_prefix("foot ") {
-                        if let Some((src, name)) = rest.rsplit_once(' ') {
-                            if name == old_name {
-                                new_body_lines.push(format!("{comment} §foot {src} {new_name}"));
-                                continue;
-                            }
-                        }
-                    }
-                }
-                new_body_lines.push(line.to_string());
-            }
-            let mut new_body = new_body_lines.join("\n");
-            if body_content.ends_with('\n') {
-                new_body.push('\n');
-            }
-
-            std::fs::write(&new_path, &new_body)?;
-            if new_path != path {
-                std::fs::remove_file(&path)?;
-            }
-            std::fs::write(&skel, &new_skel)?;
-
-            let output = stitcher::stitch(&skel)?;
-            let src = stitcher::source_path_from_skel(&skel)?;
-            std::fs::write(&src, &output)?;
-            Ok(format!(
-                "renamed {} -> {} + stitched: {}",
-                path.display(),
-                new_path.display(),
-                src.display()
-            ))
-        }
-        "delete_body" => {
-            let path = PathBuf::from(str_arg(&args, "path")?);
-            let skel = skeleton_for_body_path(&path)
-                .ok_or_else(|| anyhow!("skeleton not found for {}", path.display()))?;
-            let skel_content = std::fs::read_to_string(&skel)?;
-            let ref_marker = splitter::to_slash(&path);
-            let new_skel: String = skel_content
-                .lines()
-                .filter(|line| {
-                    if let Some(payload) = stitcher::marker_payload(line) {
-                        payload.trim() != ref_marker
-                    } else {
-                        true
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            let mut new_skel = new_skel;
-            if skel_content.ends_with('\n') {
-                new_skel.push('\n');
-            }
-            std::fs::write(&skel, &new_skel)?;
-            if path.exists() {
-                std::fs::remove_file(&path)?;
-            }
-            let output = stitcher::stitch(&skel)?;
-            let src = stitcher::source_path_from_skel(&skel)?;
-            std::fs::write(&src, &output)?;
-            Ok(format!(
-                "deleted {} + stitched: {}",
-                path.display(),
-                src.display()
-            ))
-        }
         "dry_run_split" => {
             let src = PathBuf::from(str_arg(&args, "source_path")?);
             let index_dir = PathBuf::from(".split");
@@ -788,180 +474,6 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
             for b in &bodies {
                 let loc = b.content.lines().count();
                 out.push_str(&format!("  {:6} loc  {}\n", loc, b.path.display()));
-            }
-            Ok(out.trim_end().to_string())
-        }
-        "merge_bodies" => {
-            let paths_val = args["paths"]
-                .as_array()
-                .ok_or_else(|| anyhow!("missing arg: paths"))?;
-            if paths_val.len() < 2 {
-                return Err(anyhow!("merge_bodies requires at least 2 paths"));
-            }
-            let new_name = str_arg(&args, "new_name")?;
-            let paths: Vec<PathBuf> = paths_val
-                .iter()
-                .map(|v| {
-                    v.as_str()
-                        .map(PathBuf::from)
-                        .ok_or_else(|| anyhow!("paths must be strings"))
-                })
-                .collect::<Result<Vec<_>>>()?;
-
-            let parent = paths[0]
-                .parent()
-                .ok_or_else(|| anyhow!("path has no parent: {}", paths[0].display()))?
-                .to_path_buf();
-            for p in &paths {
-                let pp = p
-                    .parent()
-                    .ok_or_else(|| anyhow!("path has no parent: {}", p.display()))?;
-                if pp != parent {
-                    return Err(anyhow!(
-                        "all paths must share the same parent dir; {} vs {}",
-                        pp.display(),
-                        parent.display()
-                    ));
-                }
-            }
-
-            let skel = skeleton_for_body_path(&paths[0])
-                .ok_or_else(|| anyhow!("could not locate skeleton for {}", paths[0].display()))?;
-            let skeleton = std::fs::read_to_string(&skel)?;
-
-            let mut order_map: std::collections::HashMap<String, usize> =
-                std::collections::HashMap::new();
-            for (idx, line) in skeleton.lines().enumerate() {
-                if let Some(ref_path) = stitcher::marker_payload(line) {
-                    if ref_path.starts_with("source ") {
-                        continue;
-                    }
-                    let fname = Path::new(ref_path)
-                        .file_name()
-                        .map(|f| f.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    order_map.insert(fname, idx);
-                }
-            }
-
-            let mut indexed: Vec<(usize, PathBuf)> = paths
-                .iter()
-                .map(|p| {
-                    let fname = p
-                        .file_name()
-                        .map(|f| f.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    let ord = order_map.get(&fname).copied().ok_or_else(|| {
-                        anyhow!("body {} not referenced in skeleton {}", p.display(), skel.display())
-                    })?;
-                    Ok((ord, p.clone()))
-                })
-                .collect::<Result<Vec<_>>>()?;
-            indexed.sort_by_key(|(o, _)| *o);
-
-            let mut merged_inner = String::new();
-            for (i, (_ord, p)) in indexed.iter().enumerate() {
-                let raw = std::fs::read_to_string(p)?;
-                let inner = strip_body_markers(&raw);
-                if i > 0 {
-                    merged_inner.push('\n');
-                }
-                merged_inner.push_str(&inner);
-            }
-
-            let src_display = stitcher::source_path_from_skel(&skel)?;
-            let src_slash = splitter::to_slash(&src_display);
-
-            let comment = stitcher::comment_for_skel(&skel);
-            let new_body_path = parent.join(format!("{new_name}.fs"));
-            let new_body_content = format!(
-                "{c} §head {} {}\n{}\n{c} §foot {} {}",
-                src_slash, new_name, merged_inner, src_slash, new_name,
-                c = comment
-            );
-            std::fs::write(&new_body_path, &new_body_content)?;
-
-            let new_ref_path_slash = splitter::to_slash(&new_body_path);
-            let target_filenames: std::collections::HashSet<String> = indexed
-                .iter()
-                .map(|(_, p)| {
-                    p.file_name()
-                        .map(|f| f.to_string_lossy().to_string())
-                        .unwrap_or_default()
-                })
-                .collect();
-            let first_idx = indexed[0].0;
-
-            let mut new_skel = String::with_capacity(skeleton.len());
-            for (idx, line) in skeleton.lines().enumerate() {
-                if let Some(ref_path) = stitcher::marker_payload(line) {
-                    if !ref_path.starts_with("source ") {
-                        let fname = Path::new(ref_path)
-                            .file_name()
-                            .map(|f| f.to_string_lossy().to_string())
-                            .unwrap_or_default();
-                        if target_filenames.contains(&fname) {
-                            if idx == first_idx {
-                                let indent_len = line.len() - line.trim_start().len();
-                                let indent = &line[..indent_len];
-                                new_skel.push_str(indent);
-                                new_skel.push_str(&format!("{} §", comment));
-                                new_skel.push_str(&new_ref_path_slash);
-                                new_skel.push('\n');
-                            }
-                            continue;
-                        }
-                    }
-                }
-                new_skel.push_str(line);
-                new_skel.push('\n');
-            }
-            std::fs::write(&skel, &new_skel)?;
-
-            let mut deleted = 0;
-            for (_, p) in &indexed {
-                if p != &new_body_path && p.exists() {
-                    std::fs::remove_file(p)?;
-                    deleted += 1;
-                }
-            }
-
-            let output = stitcher::stitch(&skel)?;
-            let src = stitcher::source_path_from_skel(&skel)?;
-            std::fs::write(&src, &output)?;
-
-            Ok(format!(
-                "merged {} bodies into {} ({} deleted); stitched: {}",
-                indexed.len(),
-                new_body_path.display(),
-                deleted,
-                src.display()
-            ))
-        }
-        "unstitch" => {
-            let src = PathBuf::from(str_arg(&args, "source_path")?);
-            let index_dir = PathBuf::from(".split");
-            let ext = src
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("rs");
-            let skel_path = stitcher::skeleton_path(&src, &index_dir);
-            if let Some(p) = skel_path.parent() {
-                std::fs::create_dir_all(p)?;
-            }
-            let (skeleton, bodies) = splitter::split_for_ext(&src, &index_dir, ext)?;
-            std::fs::write(&skel_path, &skeleton)?;
-            let mut out = format!(
-                "unstitched {} — local edits captured back into bodies\nskeleton: {}\n",
-                src.display(),
-                skel_path.display()
-            );
-            for b in &bodies {
-                if let Some(p) = b.path.parent() {
-                    std::fs::create_dir_all(p)?;
-                }
-                std::fs::write(&b.path, &b.content)?;
-                out.push_str(&format!("  body: {}\n", b.path.display()));
             }
             Ok(out.trim_end().to_string())
         }
@@ -1179,19 +691,10 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
                     std::fs::write(&skel, new_content)?;
                     affected_skels.insert(skel);
                 }
-                let mut restitched = 0u32;
-                for skel in affected_skels {
-                    if let Ok(stitched) = stitcher::stitch(&skel) {
-                        if let Ok(src) = stitcher::source_path_from_skel(&skel) {
-                            if std::fs::write(&src, &stitched).is_ok() {
-                                restitched += 1;
-                            }
-                        }
-                    }
-                }
+                let _ = affected_skels;
                 out.push_str(&format!(
-                    "\nfixed: deleted {} orphans, removed {} dead refs, re-stitched {} sources\n",
-                    deleted_orphans, removed_dead, restitched
+                    "\nfixed: deleted {} orphans, removed {} dead refs\n",
+                    deleted_orphans, removed_dead
                 ));
             }
 
@@ -1199,7 +702,6 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
         }
         "diff_body" => {
             let path = PathBuf::from(str_arg(&args, "path")?);
-            let against = args["against"].as_str().unwrap_or("stitched");
             if !path.exists() {
                 return Err(anyhow!("body file not found: {}", path.display()));
             }
@@ -1214,9 +716,6 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
                 .unwrap_or_default();
 
             let mut out = String::new();
-            if against == "origin" {
-                out.push_str("note: origin not retained, showing vs current source\n");
-            }
 
             let source_region = if let Some(src) = &origin {
                 if src.exists() {
@@ -1601,17 +1100,6 @@ fn naive_diff(a: &str, b: &str) -> String {
         }
     }
     out
-}
-
-fn stitch_after(path: &Path) -> Result<String> {
-    if let Some(skel) = skeleton_for_body_path(path) {
-        let output = stitcher::stitch(&skel)?;
-        let src = stitcher::source_path_from_skel(&skel)?;
-        std::fs::write(&src, &output)?;
-        Ok(format!("written + stitched: {}", src.display()))
-    } else {
-        Ok(format!("written: {}", path.display()))
-    }
 }
 
 fn skeleton_for_body_path(body: &Path) -> Option<PathBuf> {
