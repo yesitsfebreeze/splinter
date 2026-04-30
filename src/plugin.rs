@@ -27,16 +27,56 @@ struct Ctx {
     wasi: wasmtime_wasi::preview1::WasiP1Ctx,
 }
 
+pub fn list() -> Vec<(String, String)> {
+    use std::collections::BTreeMap;
+    let mut map: BTreeMap<String, String> = BTreeMap::new();
+
+    if !BUILTIN_RS.is_empty() {
+        map.insert("rs".into(), "builtin".into());
+    }
+    if !BUILTIN_PY.is_empty() {
+        map.insert("py".into(), "builtin".into());
+    }
+
+    if let Some(home) = dirs::home_dir() {
+        let user_dir = home.join(".config/split/languages");
+        if let Ok(rd) = std::fs::read_dir(&user_dir) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.extension().and_then(|s| s.to_str()) == Some("wasm") {
+                    if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                        map.insert(stem.to_string(), "user".into());
+                    }
+                }
+            }
+        }
+    }
+
+    let proj = PathBuf::from(".split/languages");
+    if let Ok(rd) = std::fs::read_dir(&proj) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("wasm") {
+                if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                    map.insert(stem.to_string(), "project".into());
+                }
+            }
+        }
+    }
+
+    map.into_iter().collect()
+}
+
 pub fn load(ext: &str) -> Option<Vec<u8>> {
     let filename = format!("{ext}.wasm");
 
-    let project = PathBuf::from(".split/plugins").join(&filename);
+    let project = PathBuf::from(".split/languages").join(&filename);
     if let Ok(b) = std::fs::read(&project) {
         return Some(b);
     }
 
     if let Some(home) = dirs::home_dir() {
-        let user = home.join(".config/split/plugins").join(&filename);
+        let user = home.join(".config/split/languages").join(&filename);
         if let Ok(b) = std::fs::read(&user) {
             return Some(b);
         }

@@ -44,6 +44,7 @@ data/schema.json       →   .split/data/schema.skel.json        (structure)
 | `search_bodies` | 🔍 Grep across all indexed functions |
 | `list_bodies` | 📋 List functions in a directory, sorted by size |
 | `find_large` | ⚠️ Find functions exceeding `SPLIT_MAX_LOC` lines |
+| `list_languages` | 🌐 List installed languages (extensions with fn-level support) |
 
 
 
@@ -124,25 +125,36 @@ SPLIT_MAX_LOC     = 256
 
 Priority: env vars > `split.ini` > hardcoded defaults.
 
-## 🧩 Plugins
+## 🌐 Languages
 
-`split` has a WASM plugin system. Plugins live in `.split/plugins/{ext}.wasm` (project-level) or `~/.config/split/plugins/{ext}.wasm` (user-level). The built-in Rust parser ships embedded.
+`split` has a WASM language system. Each language is a `.wasm` module that teaches the parser how to decompose a given file extension.
 
-Any language that compiles to `wasm32-wasip1` can be a plugin. Export three functions:
+Language modules live in:
+- `.split/languages/{ext}.wasm` — project-level
+- `~/.config/split/languages/{ext}.wasm` — user-level
+- embedded — built-in (`rs`, `py`)
+
+Resolution: project > user > builtin.
+
+Use the `list_languages` MCP tool to see what is installed in the current environment.
+
+Any language that compiles to `wasm32-wasip1` can be a language module. Export:
 
 ```
 wasm_alloc(size: i32) -> i32
 plugin_split(ptr: i32, len: i32) -> i32
 plugin_result_ptr() -> i32
+plugin_meta_ptr() -> i32
+plugin_meta_len() -> i32
 ```
 
-## 🧱 Built-in plugins
+## 🧱 Built-in languages
 
-Each plugin declares its own comment marker and produces a `.skel.<ext>` skeleton matching the source extension.
+Each language declares its own comment marker and produces a `.skel.<ext>` skeleton matching the source extension.
 
-| Plugin | Ext | Comment | Extracts |
+| Language | Ext | Comment | Extracts |
 |---|---|---|---|
 | `rs` | `.rs` | `//` | `fn` items (free + impl methods) |
 | `py` | `.py` | `#` | `def` / `async def` + class methods (qualified `Class.method`) |
 
-Any other extension — whole file stored as one body. Index + search + watch still work; just no fn-level decomposition. Drop a `.wasm` plugin into `.split/plugins/{ext}.wasm` to add fn-level support for any language.
+Any other extension — whole file stored as one body. Index + search + watch still work; just no fn-level decomposition. Drop a `.wasm` module into `.split/languages/{ext}.wasm` to add fn-level support for any language.

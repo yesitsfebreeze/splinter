@@ -3,13 +3,13 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use crate::{splitter, stitcher};
+use crate::{plugin, splitter, stitcher};
 
 pub fn list() -> Value {
     json!([
         {
             "name": "split",
-            "description": "Split a Rust source file into skeleton + per-function body files inside .split/",
+            "description": "Split a source file into skeleton + per-function body files inside .split/. Language support depends on installed languages (see list_languages).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -267,6 +267,11 @@ pub fn list() -> Value {
                 "properties": { "path": { "type": "string" } },
                 "required": ["path"]
             }
+        },
+        {
+            "name": "list_languages",
+            "description": "List installed languages (file extensions with fn-level decomposition support). Source: builtin | user (~/.config/split/languages) | project (.split/languages). Project overrides user overrides builtin. Extensions not listed still work — whole file stored as one body.",
+            "inputSchema": { "type": "object", "properties": {} }
         },
         {
             "name": "grep_source",
@@ -1315,6 +1320,21 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
             paths.sort();
             let results = grep_paths(&paths, &matcher, true)?;
             Ok(format_grep_results(&results, cursor, limit, query))
+        }
+        "list_languages" => {
+            let langs = plugin::list();
+            let arr: Vec<Value> = langs
+                .into_iter()
+                .map(|(ext, source)| {
+                    let meta = plugin::meta_for_ext(&ext);
+                    json!({
+                        "ext": ext,
+                        "source": source,
+                        "comment": meta.comment,
+                    })
+                })
+                .collect();
+            Ok(serde_json::to_string_pretty(&json!({ "languages": arr }))?)
         }
         other => Err(anyhow!("unknown tool: {other}")),
     }

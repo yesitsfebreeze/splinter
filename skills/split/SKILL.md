@@ -1,27 +1,33 @@
 ---
 name: split
-description: Use split MCP tools instead of Read/Grep when working with Rust source files. Fn-level index: auto-splits on first access, watcher syncs bidirectionally.
+description: Use split MCP tools instead of Read/Grep when working with source files. Fn-level index, multi-language via WASM. Auto-splits on first access; watcher syncs bidirectionally.
 ---
 
 # split: fn-level code index
 
-`split` MCP server indexes `.rs` files into per-function `.fs` body files under `.split/`.
+`split` MCP server indexes source files into per-function `.fs` body files under `.split/`.
 Read one function at a time. Watcher auto-syncs both directions (mtime arbitration).
+
+Multi-language via WASM. Builtins: `rs`, `py`. Add more by dropping `.wasm` into `.split/languages/` (project) or `~/.config/split/languages/` (user). Extensions without a language plugin still work — whole file stored as one body.
 
 ## Tool map
 
 | Instead of | Use |
 |---|---|
-| `Read file.rs` | `open_source(source_path)` → fn list, then `read_body(path)` |
+| `Read file.<ext>` | `open_source(source_path)` → fn list, then `read_body(path)` |
 | `Grep pattern src/` | `search_bodies(query)` |
-| Edit one fn | `open_source` → `read_body` → `write_body` (auto-stitches to .rs) |
-| `Read file.rs` (full file needed) | OK for small/non-Rust files |
+| Edit one fn | `open_source` → `read_body` → `write_body` (auto-stitches to source) |
+| `Read file.<ext>` (full file needed) | OK for small files |
 | Find bloated functions | `find_large()` |
+| Discover supported languages | `list_languages()` |
 
 ## Workflow
 
+### Discover languages
+- `list_languages()` — returns installed extensions + source (builtin/user/project) + comment marker
+
 ### Explore
-1. `open_source("src/path/to/file.rs")` — returns fn list sorted by size, ⚠ flags functions over `SPLIT_MAX_LOC`
+1. `open_source("src/path/to/file.<ext>")` — returns fn list sorted by size, ⚠ flags functions over `SPLIT_MAX_LOC`
 2. `read_body(".split/src/path/to/file/fn_name.fs")` — load one fn
 
 ### Search
@@ -30,7 +36,7 @@ Read one function at a time. Watcher auto-syncs both directions (mtime arbitrati
 ### Edit
 1. `open_source` → note `bodies:` dir
 2. `read_body` → get current impl
-3. `write_body(path, content)` → watcher stitches back to `.rs`
+3. `write_body(path, content)` → watcher stitches back to source
 
 ### Bootstrap
 If `.split/` is empty:
