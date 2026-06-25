@@ -9,7 +9,7 @@
 #   SCRATCH_BIN=target/debug/scratch
 set -eu
 
-VERSION="0.1.0"            # keep in sync with plugin.json and the vX.Y.Z release tag
+VERSION="0.1.1"            # keep in sync with plugin.json and the vX.Y.Z release tag
 REPO="yesitsfebreeze/scratch"
 
 if [ "${SCRATCH_BIN:-}" != "" ]; then
