@@ -1,6 +1,6 @@
-# scratch — contributor guide
+# splinter — contributor guide
 
-`scratch` is an MCP server that indexes source at the function level. See README.md for the user-facing overview.
+`splinter` is an MCP server that indexes source at the function level. See README.md for the user-facing overview.
 
 ## Build & test
 
@@ -10,6 +10,6 @@
 
 ## Navigating this codebase
 
-When the scratch MCP server is connected, prefer its tools over Read/Grep. The skill below is the full reference — it is linked here so it loads from the start of every session:
+When the splinter MCP server is connected, prefer its tools over Read/Grep. The skill below is the full reference — it is linked here so it loads from the start of every session:
 
-@skills/scratch/SKILL.md
+@skills/splinter/SKILL.md

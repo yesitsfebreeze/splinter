@@ -15,9 +15,27 @@ const BUILTIN_PHP: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_langu
 const BUILTIN_HTML: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_html.wasm"));
 const BUILTIN_CPP: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_cpp.wasm"));
 const BUILTIN_JS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_js.wasm"));
+const BUILTIN_TS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_ts.wasm"));
+const BUILTIN_JAVA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_java.wasm"));
+const BUILTIN_CS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_cs.wasm"));
+const BUILTIN_KT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_kt.wasm"));
+const BUILTIN_SWIFT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_swift.wasm"));
+const BUILTIN_SH: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_sh.wasm"));
+const BUILTIN_LUA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_lua.wasm"));
+const BUILTIN_RB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_rb.wasm"));
+const BUILTIN_SQL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_sql.wasm"));
 
 /// Extensions routed to the builtin JavaScript module.
 const JS_EXTS: &[&str] = &["js", "mjs", "cjs", "jsx"];
+
+/// Extensions routed to the builtin TypeScript module.
+const TS_EXTS: &[&str] = &["ts", "tsx", "mts", "cts"];
+
+/// Extensions routed to the builtin Kotlin module.
+const KT_EXTS: &[&str] = &["kt", "kts"];
+
+/// Extensions routed to the builtin Shell module.
+const SH_EXTS: &[&str] = &["sh", "bash"];
 
 /// Extensions routed to the builtin C++ module (the finder also parses plain C).
 const CPP_EXTS: &[&str] = &[
@@ -73,9 +91,42 @@ pub fn list() -> Vec<(String, String)> {
             map.insert((*ext).into(), "builtin".into());
         }
     }
+    if !BUILTIN_TS.is_empty() {
+        for ext in TS_EXTS {
+            map.insert((*ext).into(), "builtin".into());
+        }
+    }
+    if !BUILTIN_JAVA.is_empty() {
+        map.insert("java".into(), "builtin".into());
+    }
+    if !BUILTIN_CS.is_empty() {
+        map.insert("cs".into(), "builtin".into());
+    }
+    if !BUILTIN_KT.is_empty() {
+        for ext in KT_EXTS {
+            map.insert((*ext).into(), "builtin".into());
+        }
+    }
+    if !BUILTIN_SWIFT.is_empty() {
+        map.insert("swift".into(), "builtin".into());
+    }
+    if !BUILTIN_SH.is_empty() {
+        for ext in SH_EXTS {
+            map.insert((*ext).into(), "builtin".into());
+        }
+    }
+    if !BUILTIN_LUA.is_empty() {
+        map.insert("lua".into(), "builtin".into());
+    }
+    if !BUILTIN_RB.is_empty() {
+        map.insert("rb".into(), "builtin".into());
+    }
+    if !BUILTIN_SQL.is_empty() {
+        map.insert("sql".into(), "builtin".into());
+    }
 
     if let Some(home) = dirs::home_dir() {
-        let user_dir = home.join(".config/scratch/languages");
+        let user_dir = home.join(".config/splinter/languages");
         if let Ok(rd) = std::fs::read_dir(&user_dir) {
             for e in rd.flatten() {
                 let p = e.path();
@@ -88,7 +139,7 @@ pub fn list() -> Vec<(String, String)> {
         }
     }
 
-    let proj = PathBuf::from(".scratch/languages");
+    let proj = PathBuf::from(".splinter/languages");
     if let Ok(rd) = std::fs::read_dir(&proj) {
         for e in rd.flatten() {
             let p = e.path();
@@ -106,13 +157,13 @@ pub fn list() -> Vec<(String, String)> {
 pub fn load(ext: &str) -> Option<Vec<u8>> {
     let filename = format!("{ext}.wasm");
 
-    let project = PathBuf::from(".scratch/languages").join(&filename);
+    let project = PathBuf::from(".splinter/languages").join(&filename);
     if let Ok(b) = std::fs::read(&project) {
         return Some(b);
     }
 
     if let Some(home) = dirs::home_dir() {
-        let user = home.join(".config/scratch/languages").join(&filename);
+        let user = home.join(".config/splinter/languages").join(&filename);
         if let Ok(b) = std::fs::read(&user) {
             return Some(b);
         }
@@ -141,6 +192,33 @@ pub fn load(ext: &str) -> Option<Vec<u8>> {
     }
     if JS_EXTS.contains(&ext) && !BUILTIN_JS.is_empty() {
         return Some(BUILTIN_JS.to_vec());
+    }
+    if TS_EXTS.contains(&ext) && !BUILTIN_TS.is_empty() {
+        return Some(BUILTIN_TS.to_vec());
+    }
+    if ext == "java" && !BUILTIN_JAVA.is_empty() {
+        return Some(BUILTIN_JAVA.to_vec());
+    }
+    if ext == "cs" && !BUILTIN_CS.is_empty() {
+        return Some(BUILTIN_CS.to_vec());
+    }
+    if KT_EXTS.contains(&ext) && !BUILTIN_KT.is_empty() {
+        return Some(BUILTIN_KT.to_vec());
+    }
+    if ext == "swift" && !BUILTIN_SWIFT.is_empty() {
+        return Some(BUILTIN_SWIFT.to_vec());
+    }
+    if SH_EXTS.contains(&ext) && !BUILTIN_SH.is_empty() {
+        return Some(BUILTIN_SH.to_vec());
+    }
+    if ext == "lua" && !BUILTIN_LUA.is_empty() {
+        return Some(BUILTIN_LUA.to_vec());
+    }
+    if ext == "rb" && !BUILTIN_RB.is_empty() {
+        return Some(BUILTIN_RB.to_vec());
+    }
+    if ext == "sql" && !BUILTIN_SQL.is_empty() {
+        return Some(BUILTIN_SQL.to_vec());
     }
 
     None

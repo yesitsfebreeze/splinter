@@ -10,7 +10,7 @@ pub fn list() -> Value {
     json!([
         {
             "name": "split",
-            "description": "Split a source file into skeleton + per-function body files inside .scratch/. Language support depends on installed languages (see list_languages).",
+            "description": "Split a source file into skeleton + per-function body files inside .splinter/. Language support depends on installed languages (see list_languages).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -51,7 +51,7 @@ pub fn list() -> Value {
         },
         {
             "name": "index_dir",
-            "description": "Recursively index all source files in a directory tree. Run once to bootstrap. Skips already-indexed files, hidden dirs, git worktrees, build/vendor dirs (target, node_modules), and anything in SCRATCH_EXCLUDE.",
+            "description": "Recursively index all source files in a directory tree. Run once to bootstrap. Skips already-indexed files, hidden dirs, git worktrees, build/vendor dirs (target, node_modules), and anything in SPLINTER_EXCLUDE.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -93,7 +93,7 @@ pub fn list() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "max_loc": { "type": "number", "description": "Line threshold (default: SCRATCH_MAX_LOC env or 256)" }
+                    "max_loc": { "type": "number", "description": "Line threshold (default: SPLINTER_MAX_LOC env or 256)" }
                 },
                 "required": []
             }
@@ -163,7 +163,7 @@ pub fn list() -> Value {
         },
         {
             "name": "list_languages",
-            "description": "List installed languages (file extensions with fn-level decomposition support). Source: builtin | user (~/.config/scratch/languages) | project (.scratch/languages). Project overrides user overrides builtin. Extensions not listed still work — whole file stored as one body.",
+            "description": "List installed languages (file extensions with fn-level decomposition support). Source: builtin | user (~/.config/splinter/languages) | project (.splinter/languages). Project overrides user overrides builtin. Extensions not listed still work — whole file stored as one body.",
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
@@ -213,8 +213,8 @@ pub fn list() -> Value {
             }
         },
         {
-            "name": "read_scratch",
-            "description": "Read the persistent scratch note for a source file — agent memory that survives re-splits. Pass the original source path (e.g. src/foo.rs).",
+            "name": "read_splinter",
+            "description": "Read the persistent splinter note for a source file — agent memory that survives re-splits. Pass the original source path (e.g. src/foo.rs).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -224,8 +224,8 @@ pub fn list() -> Value {
             }
         },
         {
-            "name": "write_scratch",
-            "description": "Write or append to a source file's persistent scratch note. Use to jot down memory about a file that should outlive re-splitting. Pass the original source path.",
+            "name": "write_splinter",
+            "description": "Write or append to a source file's persistent splinter note. Use to jot down memory about a file that should outlive re-splitting. Pass the original source path.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -258,8 +258,8 @@ pub async fn call(name: &str, args: Value) -> Result<String> {
         "search_names" => handle_search_names(args),
         "grep_files" => handle_grep_files(args),
         "list_languages" => handle_list_languages(args),
-        "read_scratch" => handle_read_scratch(args),
-        "write_scratch" => handle_write_scratch(args),
+        "read_splinter" => handle_read_splinter(args),
+        "write_splinter" => handle_write_splinter(args),
         other => Err(anyhow!("unknown tool: {other}")),
     }
 }
@@ -281,8 +281,8 @@ fn handle_split(args: Value) -> Result<String> {
         std::fs::write(&b.path, &b.content)?;
         out.push_str(&format!("  body: {}\n", b.path.display()));
     }
-    let scratch = splitter::ensure_scratch(&src, &index_dir)?;
-    out.push_str(&format!("scratch: {}\n", scratch.display()));
+    let splinter = splitter::ensure_splinter(&src, &index_dir)?;
+    out.push_str(&format!("splinter: {}\n", splinter.display()));
     Ok(out)
 }
 
@@ -410,7 +410,7 @@ fn handle_index_dir(args: Value) -> Result<String> {
     let mut files_skipped = 0u32;
     let mut bodies_total = 0u32;
     for src in walk_files(&src_dir, ext) {
-        splitter::ensure_scratch(&src, &index_dir).ok();
+        splitter::ensure_splinter(&src, &index_dir).ok();
         let skel_path = splitter::skeleton_path(&src, &index_dir);
         if skel_path.exists() {
             files_skipped += 1;
@@ -457,8 +457,8 @@ fn handle_open_source(args: Value) -> Result<String> {
             std::fs::write(&b.path, &b.content)?;
         }
     }
-    let scratch = splitter::ensure_scratch(&src, &index_dir)?;
-    let scratch_loc = std::fs::read_to_string(&scratch)
+    let splinter = splitter::ensure_splinter(&src, &index_dir)?;
+    let splinter_loc = std::fs::read_to_string(&splinter)
         .map(|s| s.lines().filter(|l| !l.trim().is_empty()).count())
         .unwrap_or(0);
     // Bodies are written under the normalized source key (see splitter::split),
@@ -474,16 +474,16 @@ fn handle_open_source(args: Value) -> Result<String> {
     } else {
         Vec::new()
     };
-    let scratch_line = format!(
-        "scratch:  {} ({} note lines)",
-        scratch.display(),
-        scratch_loc.saturating_sub(1)
+    let splinter_line = format!(
+        "splinter:  {} ({} note lines)",
+        splinter.display(),
+        splinter_loc.saturating_sub(1)
     );
     if entries.is_empty() {
         return Ok(format!(
             "skeleton: {} (no function bodies extracted)\n{}",
             skel_path.display(),
-            scratch_line
+            splinter_line
         ));
     }
     entries.sort_by_key(|e| std::cmp::Reverse(e.0));
@@ -492,7 +492,7 @@ fn handle_open_source(args: Value) -> Result<String> {
         "skeleton: {}\nbodies:   {}\n{}\n",
         skel_path.display(),
         file_impl_dir.display(),
-        scratch_line
+        splinter_line
     );
     for (_sz, p) in &entries {
         let fn_name = p.file_stem().unwrap_or_default().to_string_lossy();
@@ -1125,19 +1125,19 @@ fn handle_list_languages(_args: Value) -> Result<String> {
     Ok(serde_json::to_string_pretty(&json!({ "languages": arr }))?)
 }
 
-fn handle_read_scratch(args: Value) -> Result<String> {
+fn handle_read_splinter(args: Value) -> Result<String> {
     let src = PathBuf::from(str_arg(&args, "source_path")?);
     let index_dir = index_root();
-    let path = splitter::ensure_scratch(&src, &index_dir)?;
+    let path = splitter::ensure_splinter(&src, &index_dir)?;
     Ok(std::fs::read_to_string(&path)?)
 }
 
-fn handle_write_scratch(args: Value) -> Result<String> {
+fn handle_write_splinter(args: Value) -> Result<String> {
     let src = PathBuf::from(str_arg(&args, "source_path")?);
     let content = str_arg(&args, "content")?;
     let append = args["append"].as_bool().unwrap_or(false);
     let index_dir = index_root();
-    let path = splitter::ensure_scratch(&src, &index_dir)?;
+    let path = splitter::ensure_splinter(&src, &index_dir)?;
     if append {
         let mut existing = std::fs::read_to_string(&path)?;
         if !existing.ends_with('\n') {
@@ -1154,13 +1154,13 @@ fn handle_write_scratch(args: Value) -> Result<String> {
     Ok(format!("wrote {}", path.display()))
 }
 
-/// Root of the derived index. Single source of truth for the `.scratch/` path.
+/// Root of the derived index. Single source of truth for the `.splinter/` path.
 fn index_root() -> PathBuf {
-    PathBuf::from(".scratch")
+    PathBuf::from(".splinter")
 }
 
 fn max_loc_threshold() -> usize {
-    std::env::var("SCRATCH_MAX_LOC")
+    std::env::var("SPLINTER_MAX_LOC")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(256)
@@ -1373,7 +1373,7 @@ fn format_iso8601(secs: u64) -> String {
     format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, mo, d, h, m, s)
 }
 
-/// Body code with every scratch marker line (§head/§sig/§foot) removed — leaves
+/// Body code with every splinter marker line (§head/§sig/§foot) removed — leaves
 /// only real source, for diffing and call-graph scanning.
 fn strip_body_markers(content: &str) -> String {
     content
@@ -1504,14 +1504,14 @@ fn skeleton_source(skel: &Path) -> Option<PathBuf> {
     Some(PathBuf::from(p.trim()))
 }
 
-/// The per-function body dir for a skeleton: `.scratch/a/b.skel.rs` -> `.scratch/a/b`.
+/// The per-function body dir for a skeleton: `.splinter/a/b.skel.rs` -> `.splinter/a/b`.
 fn body_dir_for_skeleton(skel: &Path) -> Option<PathBuf> {
     let base = skel.file_name()?.to_str()?.split(".skel.").next()?;
     Some(skel.parent()?.join(base))
 }
 
 /// The source dir a body belongs to, relative to the index root: a body at
-/// `.scratch/crates/x/src/foo/bar.fs` -> `crates/x/src/foo`. Powers scope-aware
+/// `.splinter/crates/x/src/foo/bar.fs` -> `crates/x/src/foo`. Powers scope-aware
 /// callee resolution with pure path ops — no file reads.
 fn body_src_dir(body: &Path, index_dir: &Path) -> Option<PathBuf> {
     body.parent()?

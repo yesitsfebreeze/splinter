@@ -1,11 +1,11 @@
 [package]
-name = "scratch"
+name = "splinter"
 version = "0.1.11"
 edition = "2021"
-description = "MCP server: fn-level code index with per-file scratch memory"
+description = "MCP server: fn-level code index with per-file splinter memory"
 
 [[bin]]
-name = "scratch"
+name = "splinter"
 path = "src/main.rs"
 
 [dependencies]

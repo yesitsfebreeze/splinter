@@ -18,6 +18,24 @@ fn main() {
     println!("cargo:rerun-if-changed=languages/cpp/Cargo.toml");
     println!("cargo:rerun-if-changed=languages/js/src");
     println!("cargo:rerun-if-changed=languages/js/Cargo.toml");
+    println!("cargo:rerun-if-changed=languages/ts/src");
+    println!("cargo:rerun-if-changed=languages/ts/Cargo.toml");
+    println!("cargo:rerun-if-changed=languages/java/src");
+    println!("cargo:rerun-if-changed=languages/java/Cargo.toml");
+    println!("cargo:rerun-if-changed=languages/cs/src");
+    println!("cargo:rerun-if-changed=languages/cs/Cargo.toml");
+    println!("cargo:rerun-if-changed=languages/kt/src");
+    println!("cargo:rerun-if-changed=languages/kt/Cargo.toml");
+    println!("cargo:rerun-if-changed=languages/swift/src");
+    println!("cargo:rerun-if-changed=languages/swift/Cargo.toml");
+    println!("cargo:rerun-if-changed=languages/sh/src");
+    println!("cargo:rerun-if-changed=languages/sh/Cargo.toml");
+    println!("cargo:rerun-if-changed=languages/lua/src");
+    println!("cargo:rerun-if-changed=languages/lua/Cargo.toml");
+    println!("cargo:rerun-if-changed=languages/rb/src");
+    println!("cargo:rerun-if-changed=languages/rb/Cargo.toml");
+    println!("cargo:rerun-if-changed=languages/sql/src");
+    println!("cargo:rerun-if-changed=languages/sql/Cargo.toml");
 
     build_language("rs", "split_language_rs");
     build_language("py", "split_language_py");
@@ -27,6 +45,15 @@ fn main() {
     build_language("html", "split_language_html");
     build_language("cpp", "split_language_cpp");
     build_language("js", "split_language_js");
+    build_language("ts", "split_language_ts");
+    build_language("java", "split_language_java");
+    build_language("cs", "split_language_cs");
+    build_language("kt", "split_language_kt");
+    build_language("swift", "split_language_swift");
+    build_language("sh", "split_language_sh");
+    build_language("lua", "split_language_lua");
+    build_language("rb", "split_language_rb");
+    build_language("sql", "split_language_sql");
 }
 
 fn build_language(lang: &str, crate_name: &str) {

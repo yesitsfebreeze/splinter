@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Patch-bump the version across every file that must stay in lockstep.
 Reads the current version from Cargo.toml, increments patch, writes it back to
-Cargo.toml, Cargo.lock (the scratch package), the plugin + marketplace manifests,
+Cargo.toml, Cargo.lock (the splinter package), the plugin + marketplace manifests,
 and the launcher. Prints the new version."""
 import pathlib
 import re
@@ -26,17 +26,17 @@ new = f"{major}.{minor}.{patch + 1}"
 # Cargo.toml — the package version line only.
 cargo_path.write_text(re.sub(rf'(?m)^version = "{re.escape(old)}"', f'version = "{new}"', cargo, count=1))
 
-# Cargo.lock — only the scratch package block (other deps may share a version).
+# Cargo.lock — only the splinter package block (other deps may share a version).
 lock_path = root / "Cargo.lock"
 lock = lock_path.read_text()
 lock_new = re.sub(
-    rf'(name = "scratch"\nversion = ")({re.escape(old)})(")',
+    rf'(name = "splinter"\nversion = ")({re.escape(old)})(")',
     lambda mm: mm.group(1) + new + mm.group(3),
     lock,
     count=1,
 )
 if lock_new == lock:
-    fail("could not find scratch package in Cargo.lock")
+    fail("could not find splinter package in Cargo.lock")
 lock_path.write_text(lock_new)
 
 # JSON manifests — anchored on the old version string (only plugin versions match).

@@ -1,4 +1,4 @@
-//! End-to-end MCP test: drive the real `scratch` binary over JSON-RPC stdin/stdout
+//! End-to-end MCP test: drive the real `splinter` binary over JSON-RPC stdin/stdout
 //! with a throwaway working directory, exercising the full tool surface.
 
 use std::io::{BufRead, BufReader, Write};
@@ -10,7 +10,7 @@ static SEQ: AtomicU32 = AtomicU32::new(0);
 
 fn workdir() -> PathBuf {
     let n = SEQ.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("scratch_e2e_{}_{n}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("splinter_e2e_{}_{n}", std::process::id()));
     std::fs::create_dir_all(dir.join("src")).unwrap();
     dir
 }
@@ -18,13 +18,13 @@ fn workdir() -> PathBuf {
 /// Send a batch of JSON-RPC request lines to a fresh server instance rooted at
 /// `cwd`, then collect the `text` payload of each response keyed by request id.
 fn drive(cwd: &PathBuf, requests: &[String]) -> Vec<String> {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_scratch"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_splinter"))
         .current_dir(cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .expect("spawn scratch binary");
+        .expect("spawn splinter binary");
 
     {
         let mut stdin = child.stdin.take().unwrap();
@@ -80,12 +80,12 @@ fn full_surface_round_trip() {
         call(2, "index_dir", serde_json::json!({ "src_dir": "src" })),
         call(
             3,
-            "write_scratch",
+            "write_splinter",
             serde_json::json!({ "source_path": "src/lib.rs", "content": "greet returns a static str", "append": true }),
         ),
         call(
             4,
-            "read_scratch",
+            "read_splinter",
             serde_json::json!({ "source_path": "src/lib.rs" }),
         ),
         call(
@@ -98,22 +98,22 @@ fn full_surface_round_trip() {
     ];
 
     let out = drive(&dir, &reqs);
-    assert_eq!(out[0], "scratch", "initialize serverInfo.name");
+    assert_eq!(out[0], "splinter", "initialize serverInfo.name");
     assert!(out[1].contains("indexed 1 files"), "index_dir: {}", out[1]);
 
-    // Scratch note persists across the re-read and carries the appended memory.
+    // Splinter note persists across the re-read and carries the appended memory.
     assert!(
         out[3].contains("greet returns a static str"),
-        "read_scratch: {}",
+        "read_splinter: {}",
         out[3]
     );
 
-    // open_source surfaces fn map + the scratch note line.
+    // open_source surfaces fn map + the splinter note line.
     assert!(out[4].contains("greet"), "open_source fns: {}", out[4]);
     assert!(out[4].contains("helper"), "open_source fns: {}", out[4]);
     assert!(
-        out[4].contains("scratch:"),
-        "open_source scratch line: {}",
+        out[4].contains("splinter:"),
+        "open_source splinter line: {}",
         out[4]
     );
 
@@ -125,13 +125,13 @@ fn full_surface_round_trip() {
     );
 
     // Files landed on disk where we expect them.
-    assert!(dir.join(".scratch/src/lib.scratch.md").exists());
-    assert!(dir.join(".scratch/src/lib.skel.rs").exists());
-    assert!(dir.join(".scratch/src/lib/greet.fs").exists());
+    assert!(dir.join(".splinter/src/lib.splinter.md").exists());
+    assert!(dir.join(".splinter/src/lib.skel.rs").exists());
+    assert!(dir.join(".splinter/src/lib/greet.fs").exists());
 }
 
 #[test]
-fn scratch_note_survives_reindex() {
+fn splinter_note_survives_reindex() {
     let dir = workdir();
     std::fs::write(dir.join("src/m.rs"), "fn a() {\n    let _ = 1;\n}\n").unwrap();
 
@@ -142,7 +142,7 @@ fn scratch_note_survives_reindex() {
             call(1, "index_dir", serde_json::json!({ "src_dir": "src" })),
             call(
                 2,
-                "write_scratch",
+                "write_splinter",
                 serde_json::json!({ "source_path": "src/m.rs", "content": "do not lose me" }),
             ),
         ],
@@ -158,7 +158,7 @@ fn scratch_note_survives_reindex() {
         &dir,
         &[call(
             1,
-            "read_scratch",
+            "read_splinter",
             serde_json::json!({ "source_path": "src/m.rs" }),
         )],
     );
@@ -170,24 +170,24 @@ fn scratch_note_survives_reindex() {
 }
 
 #[test]
-fn write_scratch_cannot_escape_index() {
+fn write_splinter_cannot_escape_index() {
     let dir = workdir();
-    // A malicious/accidental `..` path must not write outside `.scratch/`.
+    // A malicious/accidental `..` path must not write outside `.splinter/`.
     let out = drive(
         &dir,
         &[call(
             1,
-            "write_scratch",
+            "write_splinter",
             serde_json::json!({ "source_path": "../../pwned.rs", "content": "x" }),
         )],
     );
     assert!(
-        out[0].starts_with("wrote .scratch"),
+        out[0].starts_with("wrote .splinter"),
         "must stay in index: {}",
         out[0]
     );
-    assert!(!dir.parent().unwrap().join("pwned.scratch.md").exists());
-    assert!(!dir.join("../pwned.scratch.md").exists());
+    assert!(!dir.parent().unwrap().join("pwned.splinter.md").exists());
+    assert!(!dir.join("../pwned.splinter.md").exists());
 }
 
 #[test]
@@ -216,8 +216,8 @@ fn python_extracts_defs_and_qualified_methods() {
     assert!(out[0].contains("indexed 1 files"), "index_dir: {}", out[0]);
     assert!(out[1].contains("alpha"), "open_source: {}", out[1]);
     assert!(out[1].contains("Foo.bar"), "qualified method: {}", out[1]);
-    assert!(dir.join(".scratch/src/m/alpha.fs").exists());
-    assert!(dir.join(".scratch/src/m/Foo.bar.fs").exists());
+    assert!(dir.join(".splinter/src/m/alpha.fs").exists());
+    assert!(dir.join(".splinter/src/m/Foo.bar.fs").exists());
 }
 
 #[test]
@@ -246,10 +246,10 @@ fn odin_extracts_procs_and_skips_typedecls() {
     assert!(out[0].contains("indexed 1 files"), "index_dir: {}", out[0]);
     assert!(out[1].contains("add"), "open_source: {}", out[1]);
     assert!(out[1].contains("greet"), "open_source: {}", out[1]);
-    assert!(dir.join(".scratch/src/m/add.fs").exists());
-    assert!(dir.join(".scratch/src/m/greet.fs").exists());
+    assert!(dir.join(".splinter/src/m/add.fs").exists());
+    assert!(dir.join(".splinter/src/m/greet.fs").exists());
     // A bare proc *type* declaration has no body and must not be indexed.
-    assert!(!dir.join(".scratch/src/m/Callback.fs").exists());
+    assert!(!dir.join(".splinter/src/m/Callback.fs").exists());
 }
 
 #[test]
@@ -278,13 +278,13 @@ fn go_extracts_funcs_and_methods_skips_literals() {
     assert!(out[0].contains("indexed 1 files"), "index_dir: {}", out[0]);
     assert!(out[1].contains("add"), "open_source: {}", out[1]);
     assert!(out[1].contains("Point.Dist"), "open_source: {}", out[1]);
-    assert!(dir.join(".scratch/src/m/add.fs").exists());
+    assert!(dir.join(".splinter/src/m/add.fs").exists());
     // Methods are qualified by receiver type.
-    assert!(dir.join(".scratch/src/m/Point.Dist.fs").exists());
+    assert!(dir.join(".splinter/src/m/Point.Dist.fs").exists());
     // A `type … func(…)` alias and the anonymous literal assigned to `h` have no
     // named declaration and must not be indexed.
-    assert!(!dir.join(".scratch/src/m/Handler.fs").exists());
-    assert!(!dir.join(".scratch/src/m/h.fs").exists());
+    assert!(!dir.join(".splinter/src/m/Handler.fs").exists());
+    assert!(!dir.join(".splinter/src/m/h.fs").exists());
 }
 
 #[test]
@@ -313,13 +313,13 @@ fn php_extracts_funcs_and_qualified_methods_skips_bodiless() {
     assert!(out[0].contains("indexed 1 files"), "index_dir: {}", out[0]);
     assert!(out[1].contains("add"), "open_source: {}", out[1]);
     assert!(out[1].contains("Calc.run"), "open_source: {}", out[1]);
-    assert!(dir.join(".scratch/src/m/add.fs").exists());
+    assert!(dir.join(".splinter/src/m/add.fs").exists());
     // Methods are qualified by their class.
-    assert!(dir.join(".scratch/src/m/Calc.run.fs").exists());
+    assert!(dir.join(".splinter/src/m/Calc.run.fs").exists());
     // A bodiless interface method and the anonymous closure have no body and
     // must not be indexed.
-    assert!(!dir.join(".scratch/src/m/I.need.fs").exists());
-    assert!(!dir.join(".scratch/src/m/need.fs").exists());
+    assert!(!dir.join(".splinter/src/m/I.need.fs").exists());
+    assert!(!dir.join(".splinter/src/m/need.fs").exists());
 }
 
 #[test]
@@ -348,10 +348,10 @@ fn html_extracts_id_elements_and_skips_unkeyed() {
     assert!(out[0].contains("indexed 1 files"), "index_dir: {}", out[0]);
     assert!(out[1].contains("top"), "open_source: {}", out[1]);
     assert!(out[1].contains("intro"), "open_source: {}", out[1]);
-    assert!(dir.join(".scratch/src/page/top.fs").exists());
-    assert!(dir.join(".scratch/src/page/intro.fs").exists());
+    assert!(dir.join(".splinter/src/page/top.fs").exists());
+    assert!(dir.join(".splinter/src/page/intro.fs").exists());
     // A void element (`<img id>`) has no body and must not be indexed.
-    assert!(!dir.join(".scratch/src/page/logo.fs").exists());
+    assert!(!dir.join(".splinter/src/page/logo.fs").exists());
 }
 
 #[test]
@@ -380,12 +380,12 @@ fn js_extracts_functions_arrows_and_class_methods() {
     assert!(out[0].contains("indexed 1 files"), "index_dir: {}", out[0]);
     assert!(out[1].contains("add"), "open_source: {}", out[1]);
     assert!(out[1].contains("load"), "open_source: {}", out[1]);
-    assert!(dir.join(".scratch/src/m/add.fs").exists());
-    assert!(dir.join(".scratch/src/m/load.fs").exists());
+    assert!(dir.join(".splinter/src/m/add.fs").exists());
+    assert!(dir.join(".splinter/src/m/load.fs").exists());
     // Class methods are qualified by their class.
-    assert!(dir.join(".scratch/src/m/Point.dist.fs").exists());
+    assert!(dir.join(".splinter/src/m/Point.dist.fs").exists());
     // An expression-bodied arrow has no brace body and must not be indexed.
-    assert!(!dir.join(".scratch/src/m/inc.fs").exists());
+    assert!(!dir.join(".splinter/src/m/inc.fs").exists());
 }
 
 #[test]
@@ -413,12 +413,137 @@ fn cpp_extracts_funcs_methods_and_skips_declarations() {
     );
     assert!(out[0].contains("indexed 1 files"), "index_dir: {}", out[0]);
     assert!(out[1].contains("add"), "open_source: {}", out[1]);
-    assert!(dir.join(".scratch/src/m/add.fs").exists());
+    assert!(dir.join(".splinter/src/m/add.fs").exists());
     // Methods are qualified by their type, in-class and out-of-line.
-    assert!(dir.join(".scratch/src/m/Point.dist.fs").exists());
-    assert!(dir.join(".scratch/src/m/Point2.norm.fs").exists());
+    assert!(dir.join(".splinter/src/m/Point.dist.fs").exists());
+    assert!(dir.join(".splinter/src/m/Point2.norm.fs").exists());
     // A pure-virtual declaration has no body and must not be indexed.
-    assert!(!dir.join(".scratch/src/m/Point.pure.fs").exists());
+    assert!(!dir.join(".splinter/src/m/Point.pure.fs").exists());
+}
+
+/// Write a single `src/m.<ext>` file, index it through the real binary (driving
+/// the embedded wasm splitter for that extension), and return the workdir so the
+/// caller can assert on the `.fs` bodies that landed under `.splinter/src/m/`.
+fn index_lang(ext: &str, content: &str) -> PathBuf {
+    let dir = workdir();
+    let file = format!("src/m.{ext}");
+    std::fs::write(dir.join(&file), content).unwrap();
+    let out = drive(
+        &dir,
+        &[call(
+            1,
+            "index_dir",
+            serde_json::json!({ "src_dir": "src", "ext": ext }),
+        )],
+    );
+    assert!(
+        out[0].contains("indexed 1 files"),
+        "{ext} index_dir: {}",
+        out[0]
+    );
+    dir
+}
+
+#[test]
+fn ts_extracts_typed_functions_and_class_methods() {
+    let dir = index_lang(
+        "ts",
+        "function add(a: number, b: number): number {\n  return a + b;\n}\n\nclass Point {\n  dist(): number {\n    return 0;\n  }\n}\n\ninterface Shape {\n  area(): number;\n}\n",
+    );
+    assert!(dir.join(".splinter/src/m/add.fs").exists());
+    assert!(dir.join(".splinter/src/m/Point.dist.fs").exists());
+    // An interface method signature has no body and must not be indexed.
+    assert!(!dir.join(".splinter/src/m/Shape.area.fs").exists());
+}
+
+#[test]
+fn java_extracts_methods_and_constructors_skips_abstract() {
+    let dir = index_lang(
+        "java",
+        "public class Calc {\n    public Calc() {\n        x = 0;\n    }\n    int add(int a, int b) {\n        return a + b;\n    }\n    abstract void todo();\n}\n",
+    );
+    assert!(dir.join(".splinter/src/m/Calc.Calc.fs").exists());
+    assert!(dir.join(".splinter/src/m/Calc.add.fs").exists());
+    // An abstract method has no body and must not be indexed.
+    assert!(!dir.join(".splinter/src/m/Calc.todo.fs").exists());
+}
+
+#[test]
+fn cs_extracts_methods_skips_auto_properties() {
+    let dir = index_lang(
+        "cs",
+        "class C {\n    public int Add(int a, int b) {\n        return a + b;\n    }\n    public int Value { get; set; }\n}\n",
+    );
+    assert!(dir.join(".splinter/src/m/C.Add.fs").exists());
+    // An auto-property is not a function and must not be indexed.
+    assert!(!dir.join(".splinter/src/m/C.Value.fs").exists());
+}
+
+#[test]
+fn kotlin_extracts_funs_skips_expression_bodied() {
+    let dir = index_lang(
+        "kt",
+        "fun add(a: Int, b: Int): Int {\n    return a + b\n}\n\nclass Point {\n    fun dist(): Int {\n        return 0\n    }\n}\n\nfun square(x: Int) = x * x\n",
+    );
+    assert!(dir.join(".splinter/src/m/add.fs").exists());
+    assert!(dir.join(".splinter/src/m/Point.dist.fs").exists());
+    // An expression-bodied fun has no brace body and must not be indexed.
+    assert!(!dir.join(".splinter/src/m/square.fs").exists());
+}
+
+#[test]
+fn swift_extracts_funcs_and_type_methods() {
+    let dir = index_lang(
+        "swift",
+        "func add(a: Int, b: Int) -> Int {\n    return a + b\n}\n\nstruct Point {\n    func dist() -> Int {\n        return 0\n    }\n}\n\nprotocol Shape {\n    func area() -> Int\n}\n",
+    );
+    assert!(dir.join(".splinter/src/m/add.fs").exists());
+    assert!(dir.join(".splinter/src/m/Point.dist.fs").exists());
+    // A protocol requirement has no body and must not be indexed.
+    assert!(!dir.join(".splinter/src/m/Shape.area.fs").exists());
+}
+
+#[test]
+fn shell_extracts_both_function_forms() {
+    let dir = index_lang(
+        "sh",
+        "foo() {\n  echo hi\n}\n\nfunction bar {\n  echo bye\n}\n",
+    );
+    assert!(dir.join(".splinter/src/m/foo.fs").exists());
+    assert!(dir.join(".splinter/src/m/bar.fs").exists());
+}
+
+#[test]
+fn lua_extracts_plain_dotted_and_colon_functions() {
+    let dir = index_lang(
+        "lua",
+        "function f(x)\n  return x\nend\n\nfunction t.m(a)\n  return a\nend\n\nfunction t:meth()\n  return self\nend\n",
+    );
+    assert!(dir.join(".splinter/src/m/f.fs").exists());
+    assert!(dir.join(".splinter/src/m/t.m.fs").exists());
+    // A colon method is qualified with a dot.
+    assert!(dir.join(".splinter/src/m/t.meth.fs").exists());
+}
+
+#[test]
+fn ruby_extracts_methods_and_singleton_methods() {
+    let dir = index_lang(
+        "rb",
+        "def top\n  1\nend\n\nclass C\n  def dist\n    0\n  end\n\n  def self.make\n    new\n  end\nend\n",
+    );
+    assert!(dir.join(".splinter/src/m/top.fs").exists());
+    assert!(dir.join(".splinter/src/m/C.dist.fs").exists());
+    // `def self.make` inside a class is qualified by the class with `self.` dropped.
+    assert!(dir.join(".splinter/src/m/C.make.fs").exists());
+}
+
+#[test]
+fn sql_extracts_dollar_quoted_function() {
+    let dir = index_lang(
+        "sql",
+        "CREATE FUNCTION add_one(n int) RETURNS int AS $$\nBEGIN\n  RETURN n + 1;\nEND;\n$$ LANGUAGE plpgsql;\n",
+    );
+    assert!(dir.join(".splinter/src/m/add_one.fs").exists());
 }
 
 #[test]
@@ -499,7 +624,7 @@ fn outline_lists_symbols_from_skeleton() {
         &[call(
             1,
             "outline",
-            serde_json::json!({ "path": ".scratch/src/o.skel.rs" }),
+            serde_json::json!({ "path": ".splinter/src/o.skel.rs" }),
         )],
     );
     let o = &out[0];
@@ -521,7 +646,7 @@ fn dry_run_split_writes_nothing() {
     );
     assert!(out[0].contains("DRY RUN"), "dry_run output: {}", out[0]);
     assert!(
-        !dir.join(".scratch/src/d.skel.rs").exists(),
+        !dir.join(".splinter/src/d.skel.rs").exists(),
         "dry run must not write the skeleton"
     );
 }
@@ -534,7 +659,7 @@ fn body_level_tools_round_trip() {
         "fn greet() -> i32 {\n    let x = 41;\n    x + 1\n}\n",
     )
     .unwrap();
-    let body = ".scratch/src/lib/greet.fs";
+    let body = ".splinter/src/lib/greet.fs";
     let out = drive(
         &dir,
         &[
@@ -543,7 +668,7 @@ fn body_level_tools_round_trip() {
             call(
                 3,
                 "list_bodies",
-                serde_json::json!({ "dir": ".scratch/src/lib" }),
+                serde_json::json!({ "dir": ".splinter/src/lib" }),
             ),
             call(4, "body_stats", serde_json::json!({ "path": body })),
             call(
@@ -578,7 +703,7 @@ fn read_body_paginates_with_range() {
             call(
                 2,
                 "read_body",
-                serde_json::json!({ "path": ".scratch/src/p/many.fs", "start": 2, "limit": 2 }),
+                serde_json::json!({ "path": ".splinter/src/p/many.fs", "start": 2, "limit": 2 }),
             ),
         ],
     );
@@ -634,7 +759,7 @@ fn ref_graph_reports_callers_and_callees() {
             call(
                 2,
                 "ref_graph",
-                serde_json::json!({ "path": ".scratch/src/g/caller.fs", "direction": "out" }),
+                serde_json::json!({ "path": ".splinter/src/g/caller.fs", "direction": "out" }),
             ),
             // Bare fn name resolves to its body for the reverse lookup.
             call(
@@ -669,7 +794,7 @@ fn ref_graph_collapses_ambiguous_callees() {
             call(
                 2,
                 "ref_graph",
-                serde_json::json!({ "path": ".scratch/src/c/caller.fs", "direction": "out" }),
+                serde_json::json!({ "path": ".splinter/src/c/caller.fs", "direction": "out" }),
             ),
         ],
     );
@@ -703,7 +828,7 @@ fn ref_graph_resolves_callee_in_same_file() {
             call(
                 2,
                 "ref_graph",
-                serde_json::json!({ "path": ".scratch/src/c/caller.fs", "direction": "out" }),
+                serde_json::json!({ "path": ".splinter/src/c/caller.fs", "direction": "out" }),
             ),
         ],
     );
@@ -732,7 +857,7 @@ fn validate_fix_purges_stale_sources() {
             serde_json::json!({ "src_dir": "src" }),
         )],
     );
-    assert!(dir.join(".scratch/src/gone.skel.rs").exists());
+    assert!(dir.join(".splinter/src/gone.skel.rs").exists());
 
     // Source removed (as a deleted worktree would be) — its index entry is stale.
     std::fs::remove_file(dir.join("src/gone.rs")).unwrap();
@@ -754,15 +879,15 @@ fn validate_fix_purges_stale_sources() {
         out[1]
     );
     assert!(
-        !dir.join(".scratch/src/gone.skel.rs").exists(),
+        !dir.join(".splinter/src/gone.skel.rs").exists(),
         "stale skeleton removed"
     );
     assert!(
-        !dir.join(".scratch/src/gone").exists(),
+        !dir.join(".splinter/src/gone").exists(),
         "stale body dir removed"
     );
     assert!(
-        dir.join(".scratch/src/keep.skel.rs").exists(),
+        dir.join(".splinter/src/keep.skel.rs").exists(),
         "live source kept"
     );
 }
@@ -881,9 +1006,9 @@ fn index_dir_skips_hidden_dirs() {
         "only real.rs: {}",
         out[0]
     );
-    assert!(dir.join(".scratch/src/real.skel.rs").exists());
+    assert!(dir.join(".splinter/src/real.skel.rs").exists());
     assert!(
-        !dir.join(".scratch/src/.hidden/secret.skel.rs").exists(),
+        !dir.join(".splinter/src/.hidden/secret.skel.rs").exists(),
         "hidden dir must not be indexed"
     );
 }
@@ -910,7 +1035,7 @@ fn index_dir_skips_git_worktrees() {
         out[0]
     );
     assert!(
-        !dir.join(".scratch/src/wt/inner.skel.rs").exists(),
+        !dir.join(".splinter/src/wt/inner.skel.rs").exists(),
         "worktree must not be indexed"
     );
 }
@@ -936,8 +1061,8 @@ fn rust_qualifies_impl_methods() {
             ),
         ],
     );
-    assert!(dir.join(".scratch/src/q/A.new.fs").exists(), "A.new body");
-    assert!(dir.join(".scratch/src/q/B.new.fs").exists(), "B.new body");
+    assert!(dir.join(".splinter/src/q/A.new.fs").exists(), "A.new body");
+    assert!(dir.join(".splinter/src/q/B.new.fs").exists(), "B.new body");
     assert!(
         out[1].contains("A.new"),
         "open_source qualified: {}",
@@ -970,7 +1095,7 @@ fn open_source_and_outline_show_signatures() {
             call(
                 3,
                 "outline",
-                serde_json::json!({ "path": ".scratch/src/sig.skel.rs" }),
+                serde_json::json!({ "path": ".splinter/src/sig.skel.rs" }),
             ),
         ],
     );

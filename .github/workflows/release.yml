@@ -51,19 +51,19 @@ jobs:
         include:
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-            asset: scratch-linux-x86_64
+            asset: splinter-linux-x86_64
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            asset: scratch-linux-aarch64
+            asset: splinter-linux-aarch64
           - runner: macos-14
             target: x86_64-apple-darwin
-            asset: scratch-macos-x86_64
+            asset: splinter-macos-x86_64
           - runner: macos-14
             target: aarch64-apple-darwin
-            asset: scratch-macos-aarch64
+            asset: splinter-macos-aarch64
           - runner: windows-latest
             target: x86_64-pc-windows-msvc
-            asset: scratch-windows-x86_64
+            asset: splinter-windows-x86_64
     steps:
       - uses: actions/checkout@v4
 
@@ -88,11 +88,11 @@ jobs:
 
       - name: Package (unix)
         if: runner.os != 'Windows'
-        run: tar -C target/${{ matrix.target }}/release -czf ${{ matrix.asset }}.tar.gz scratch
+        run: tar -C target/${{ matrix.target }}/release -czf ${{ matrix.asset }}.tar.gz splinter
 
       - name: Package (windows)
         if: runner.os == 'Windows'
-        run: Compress-Archive -Path target/${{ matrix.target }}/release/scratch.exe -DestinationPath ${{ matrix.asset }}.zip
+        run: Compress-Archive -Path target/${{ matrix.target }}/release/splinter.exe -DestinationPath ${{ matrix.asset }}.zip
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2

@@ -1,13 +1,13 @@
 {
-  "name": "scratch",
+  "name": "splinter",
   "version": "0.1.11",
-  "description": "Fn-level code index MCP server. Splits source files into per-function body files for token-efficient navigation, with a persistent per-file scratch note for agent memory. Watcher re-splits on source change.",
+  "description": "Fn-level code index MCP server. Splits source files into per-function body files for token-efficient navigation, with a persistent per-file splinter note for agent memory. Watcher re-splits on source change.",
   "author": {
     "name": "febreeze",
     "url": "https://github.com/yesitsfebreeze"
   },
-  "homepage": "https://github.com/yesitsfebreeze/scratch",
-  "repository": "https://github.com/yesitsfebreeze/scratch",
+  "homepage": "https://github.com/yesitsfebreeze/splinter",
+  "repository": "https://github.com/yesitsfebreeze/splinter",
   "license": "MIT",
   "keywords": [
     "mcp",
@@ -15,18 +15,18 @@
     "code-navigation",
     "token-efficient",
     "rust",
-    "scratch",
+    "splinter",
     "memory"
   ],
   "mcpServers": {
-    "scratch": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/bin/scratch",
+    "splinter": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/splinter",
       "args": [],
       "env": {
-        "SCRATCH_EXT": "rs",
-        "SCRATCH_SRC_DIR": "src",
-        "SCRATCH_DEBOUNCE_MS": "120000",
-        "SCRATCH_MAX_LOC": "256"
+        "SPLINTER_EXT": "rs",
+        "SPLINTER_SRC_DIR": "src",
+        "SPLINTER_DEBOUNCE_MS": "120000",
+        "SPLINTER_MAX_LOC": "256"
       }
     }
   },

@@ -63,7 +63,7 @@ pub async fn handle(input: &str) -> Option<Resp> {
             json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": "scratch", "version": "0.1.0" }
+                "serverInfo": { "name": "splinter", "version": "0.1.0" }
             }),
         ),
         "tools/list" => ok(id, json!({ "tools": tools::list() })),

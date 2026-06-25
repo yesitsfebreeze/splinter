@@ -7,7 +7,7 @@ use std::time::Duration;
 use crate::splitter;
 
 pub fn watch(src_dir: &Path, index_dir: &Path, ext: &str) -> Result<()> {
-    let debounce_ms = std::env::var("SCRATCH_DEBOUNCE_MS")
+    let debounce_ms = std::env::var("SPLINTER_DEBOUNCE_MS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(500);
@@ -33,7 +33,7 @@ pub fn watch_with_debounce(
     let src_ext = ext.to_string();
 
     eprintln!(
-        "scratch: indexing {} -> {} (*.{})",
+        "splinter: indexing {} -> {} (*.{})",
         src_dir.display(),
         index_dir.display(),
         src_ext
@@ -49,7 +49,7 @@ pub fn watch_with_debounce(
                         && !splitter::path_excluded(&path)
                     {
                         if let Err(e) = on_source_change(&path, &index_dir, &src_ext) {
-                            eprintln!("scratch error: {e}");
+                            eprintln!("splinter error: {e}");
                         }
                     }
                 }
@@ -75,7 +75,7 @@ fn on_source_change(src_path: &Path, index_dir: &Path, ext: &str) -> Result<()> 
         }
         std::fs::write(&b.path, &b.content)?;
     }
-    splitter::ensure_scratch(src_path, index_dir).ok();
-    eprintln!("re-scratch <- {}", src_path.display());
+    splitter::ensure_splinter(src_path, index_dir).ok();
+    eprintln!("re-splinter <- {}", src_path.display());
     Ok(())
 }

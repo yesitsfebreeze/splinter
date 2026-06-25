@@ -34,14 +34,14 @@ fn cfg(key: &str, ini: &HashMap<String, String>, default: &str) -> String {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let ini = load_ini("scratch.ini");
+    let ini = load_ini("splinter.ini");
 
-    let index_dir = PathBuf::from(".scratch");
-    let src_dir = PathBuf::from(cfg("SCRATCH_SRC_DIR", &ini, "src"));
-    let ext = cfg("SCRATCH_EXT", &ini, "rs");
+    let index_dir = PathBuf::from(".splinter");
+    let src_dir = PathBuf::from(cfg("SPLINTER_SRC_DIR", &ini, "src"));
+    let ext = cfg("SPLINTER_EXT", &ini, "rs");
 
-    // Propagate ini values as env vars so the watcher (SCRATCH_DEBOUNCE_MS) and
-    // tools (SCRATCH_MAX_LOC) can read them without re-parsing the ini.
+    // Propagate ini values as env vars so the watcher (SPLINTER_DEBOUNCE_MS) and
+    // tools (SPLINTER_MAX_LOC) can read them without re-parsing the ini.
     for (k, v) in &ini {
         if std::env::var(k).is_err() {
             std::env::set_var(k, v);
@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
         let e = ext.clone();
         std::thread::spawn(move || {
             if let Err(err) = watcher::watch(&s, &i, &e) {
-                eprintln!("scratch watcher: {err}");
+                eprintln!("splinter watcher: {err}");
             }
         });
     }

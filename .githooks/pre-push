@@ -5,8 +5,8 @@
 # the version, commits it, and re-pushes (guarded against recursion) — the bump
 # rides out on the same `git push`. Tag pushes and feature branches are skipped.
 #
-# Skip once with:  SCRATCH_NO_BUMP=1 git push
-if [ -n "${SCRATCH_BUMP_DONE:-}" ] || [ -n "${SCRATCH_NO_BUMP:-}" ]; then
+# Skip once with:  SPLINTER_NO_BUMP=1 git push
+if [ -n "${SPLINTER_BUMP_DONE:-}" ] || [ -n "${SPLINTER_NO_BUMP:-}" ]; then
   exit 0
 fi
 
@@ -31,21 +31,21 @@ case "$(git -C "$root" log -1 --pretty=%s 2>/dev/null)" in
 esac
 
 new=$(python3 "$root/.githooks/bump-version.py") || {
-  echo "scratch: version bump failed, aborting push" >&2
+  echo "splinter: version bump failed, aborting push" >&2
   exit 1
 }
 git -C "$root" add Cargo.toml Cargo.lock .claude-plugin/plugin.json .claude-plugin/marketplace.json || exit 1
 git -C "$root" commit -q -m "chore(release): bump version to $new" || exit 1
-echo "scratch: bumped version to $new" >&2
+echo "splinter: bumped version to $new" >&2
 
 # Re-push so the bump rides out on this same `git push`. A pre-push hook can't
 # add a commit to the push that triggered it, so we push the bumped branch here
 # and abort the original (now-superseded) push.
 branch=$(git -C "$root" rev-parse --abbrev-ref HEAD)
-if SCRATCH_BUMP_DONE=1 git -C "$root" push "$remote" "$branch"; then
-  echo "scratch: pushed $branch with version bump to $new (tree is clean)." >&2
-  echo "scratch: git's 'failed to push some refs' below is the original push being superseded — your push succeeded." >&2
+if SPLINTER_BUMP_DONE=1 git -C "$root" push "$remote" "$branch"; then
+  echo "splinter: pushed $branch with version bump to $new (tree is clean)." >&2
+  echo "splinter: git's 'failed to push some refs' below is the original push being superseded — your push succeeded." >&2
   exit 1
 fi
-echo "scratch: re-push failed; bump is committed locally. Just run 'git push' again." >&2
+echo "splinter: re-push failed; bump is committed locally. Just run 'git push' again." >&2
 exit 1

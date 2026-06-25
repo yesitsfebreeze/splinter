@@ -483,22 +483,22 @@ pub fn skeleton_path(src: &Path, index_dir: &Path) -> PathBuf {
     index_dir.join(source_key.with_extension(format!("skel.{ext}")))
 }
 
-/// Persistent per-source scratch note, sibling to the skeleton. The agent jots
+/// Persistent per-source splinter note, sibling to the skeleton. The agent jots
 /// memory here; it is created once and never overwritten by re-splitting.
-pub fn scratch_path(src: &Path, index_dir: &Path) -> PathBuf {
+pub fn splinter_path(src: &Path, index_dir: &Path) -> PathBuf {
     let source_key = source_key_path(src);
-    index_dir.join(source_key.with_extension("scratch.md"))
+    index_dir.join(source_key.with_extension("splinter.md"))
 }
 
-/// Create the scratch note with a header if it does not exist. Never clobbers
+/// Create the splinter note with a header if it does not exist. Never clobbers
 /// existing notes — safe to call on every re-split.
-pub fn ensure_scratch(src: &Path, index_dir: &Path) -> Result<PathBuf> {
-    let path = scratch_path(src, index_dir);
+pub fn ensure_splinter(src: &Path, index_dir: &Path) -> Result<PathBuf> {
+    let path = splinter_path(src, index_dir);
     if !path.exists() {
         if let Some(p) = path.parent() {
             std::fs::create_dir_all(p)?;
         }
-        let header = format!("# scratch: {}\n\n", to_slash(&source_key_path(src)));
+        let header = format!("# splinter: {}\n\n", to_slash(&source_key_path(src)));
         std::fs::write(&path, header)?;
     }
     Ok(path)
@@ -525,8 +525,8 @@ pub fn source_key_path(source_path: &Path) -> PathBuf {
 }
 
 /// Keep only normal path segments (folding away a drive prefix) so any derived
-/// index/skeleton/scratch path stays inside the index dir — `..`, a leading `/`,
-/// or `C:\` can never make a write escape `.scratch/`.
+/// index/skeleton/splinter path stays inside the index dir — `..`, a leading `/`,
+/// or `C:\` can never make a write escape `.splinter/`.
 fn contain(p: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for comp in p.components() {
@@ -570,14 +570,14 @@ pub fn is_marker_line(line: &str) -> bool {
 }
 
 /// A directory that must never be walked into when indexing source: hidden dirs
-/// (`.git`, `.scratch`, nested `.claude/worktrees`, …), `worktrees` trees, the
-/// usual build/vendor dirs, and anything listed in `SCRATCH_EXCLUDE`.
+/// (`.git`, `.splinter`, nested `.claude/worktrees`, …), `worktrees` trees, the
+/// usual build/vendor dirs, and anything listed in `SPLINTER_EXCLUDE`.
 pub fn excluded_dir_name(name: &str) -> bool {
     if name.starts_with('.') {
         return true;
     }
     matches!(name, "target" | "node_modules" | "worktrees")
-        || std::env::var("SCRATCH_EXCLUDE").is_ok_and(|v| v.split(',').any(|s| s.trim() == name))
+        || std::env::var("SPLINTER_EXCLUDE").is_ok_and(|v| v.split(',').any(|s| s.trim() == name))
 }
 
 /// A linked git worktree root: its `.git` is a regular file (a `gitdir:` pointer),
@@ -615,7 +615,7 @@ mod tests {
 
     fn tmp() -> PathBuf {
         let n = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("scratch_test_{}_{n}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("splinter_test_{}_{n}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -656,7 +656,7 @@ mod tests {
     #[test]
     fn source_key_contains_traversal() {
         // `..` and a leading `/` must never survive into the key, or a derived
-        // scratch/skeleton path could escape the index directory.
+        // splinter/skeleton path could escape the index directory.
         for input in [
             "../../etc/passwd",
             "/etc/passwd",
@@ -667,8 +667,8 @@ mod tests {
             assert!(!key.to_string_lossy().contains(".."), "{input} -> {key:?}");
             assert!(!key.is_absolute(), "{input} -> {key:?}");
         }
-        // A derived scratch path stays under the index root.
-        let note = scratch_path(Path::new("../../secret"), Path::new(".idx"));
+        // A derived splinter path stays under the index root.
+        let note = splinter_path(Path::new("../../secret"), Path::new(".idx"));
         assert!(note.starts_with(".idx"), "escaped: {note:?}");
         assert!(!note.to_string_lossy().contains(".."));
     }
@@ -682,22 +682,22 @@ mod tests {
             PathBuf::from(".idx/src/config/parser.skel.rs")
         );
         assert_eq!(
-            scratch_path(src, idx),
-            PathBuf::from(".idx/src/config/parser.scratch.md")
+            splinter_path(src, idx),
+            PathBuf::from(".idx/src/config/parser.splinter.md")
         );
     }
 
     #[test]
-    fn ensure_scratch_creates_then_never_clobbers() {
+    fn ensure_splinter_creates_then_never_clobbers() {
         let idx = tmp();
         let src = Path::new("src/foo.rs");
-        let note = ensure_scratch(src, &idx).unwrap();
+        let note = ensure_splinter(src, &idx).unwrap();
         assert!(note.exists());
         let header = std::fs::read_to_string(&note).unwrap();
-        assert!(header.starts_with("# scratch: src/foo.rs"));
+        assert!(header.starts_with("# splinter: src/foo.rs"));
 
-        std::fs::write(&note, "# scratch: src/foo.rs\n\nremember this\n").unwrap();
-        let again = ensure_scratch(src, &idx).unwrap();
+        std::fs::write(&note, "# splinter: src/foo.rs\n\nremember this\n").unwrap();
+        let again = ensure_splinter(src, &idx).unwrap();
         assert_eq!(note, again);
         // Re-splitting must not wipe agent memory.
         assert!(std::fs::read_to_string(&note)

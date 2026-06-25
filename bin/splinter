@@ -1,17 +1,17 @@
 #!/bin/sh
-# scratch MCP launcher.
+# splinter MCP launcher.
 #
 # The plugin manifest is the single source of truth for the version. This reads
 # it, downloads the prebuilt binary for that version + this platform on first
 # run, caches it, then execs it — no local Rust toolchain needed.
 #
-# Dev override: SCRATCH_BIN=/abs/path/to/scratch  (use a local build, skip download)
+# Dev override: SPLINTER_BIN=/abs/path/to/splinter  (use a local build, skip download)
 set -eu
 
-REPO="yesitsfebreeze/scratch"
+REPO="yesitsfebreeze/splinter"
 
-if [ "${SCRATCH_BIN:-}" != "" ]; then
-  exec "$SCRATCH_BIN" "$@"
+if [ "${SPLINTER_BIN:-}" != "" ]; then
+  exec "$SPLINTER_BIN" "$@"
 fi
 
 # Version comes from the plugin manifest — nowhere else.
@@ -19,7 +19,7 @@ root="${CLAUDE_PLUGIN_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}"
 manifest="$root/.claude-plugin/plugin.json"
 version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -1)
 if [ -z "$version" ]; then
-  echo "scratch: could not read version from $manifest" >&2
+  echo "splinter: could not read version from $manifest" >&2
   exit 1
 fi
 
@@ -28,21 +28,21 @@ arch=$(uname -m)
 case "$os" in
   Linux) os=linux ;;
   Darwin) os=macos ;;
-  *) echo "scratch: unsupported OS '$os' — build from source: cargo install --git https://github.com/$REPO" >&2; exit 1 ;;
+  *) echo "splinter: unsupported OS '$os' — build from source: cargo install --git https://github.com/$REPO" >&2; exit 1 ;;
 esac
 case "$arch" in
   x86_64 | amd64) arch=x86_64 ;;
   arm64 | aarch64) arch=aarch64 ;;
-  *) echo "scratch: unsupported architecture '$arch'" >&2; exit 1 ;;
+  *) echo "splinter: unsupported architecture '$arch'" >&2; exit 1 ;;
 esac
 
-asset="scratch-${os}-${arch}.tar.gz"
-cache="${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/scratch}/v${version}"
-bin="$cache/scratch"
+asset="splinter-${os}-${arch}.tar.gz"
+cache="${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/splinter}/v${version}"
+bin="$cache/splinter"
 
 if [ ! -x "$bin" ]; then
   mkdir -p "$cache"
-  base="${SCRATCH_DOWNLOAD_BASE:-https://github.com/$REPO/releases/download}"
+  base="${SPLINTER_DOWNLOAD_BASE:-https://github.com/$REPO/releases/download}"
   url="${base}/v${version}/${asset}"
   tmp=$(mktemp -d)
   trap 'rm -rf "$tmp"' EXIT
@@ -51,11 +51,11 @@ if [ ! -x "$bin" ]; then
   elif command -v wget >/dev/null 2>&1; then
     wget -qO "$tmp/$asset" "$url"
   else
-    echo "scratch: need curl or wget to download the binary" >&2
+    echo "splinter: need curl or wget to download the binary" >&2
     exit 1
   fi
   tar -xzf "$tmp/$asset" -C "$tmp"
-  mv "$tmp/scratch" "$bin"
+  mv "$tmp/splinter" "$bin"
   chmod +x "$bin"
 fi
 

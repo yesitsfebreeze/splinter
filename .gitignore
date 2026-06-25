@@ -9,11 +9,11 @@ languages/html/target/
 languages/cpp/target/
 languages/js/target/
 
-# generated index (not source of truth) — but keep the scratch notes,
+# generated index (not source of truth) — but keep the splinter notes,
 # they are durable agent memory, not derived cache.
-.scratch/**
-!.scratch/**/
-!.scratch/**/*.scratch.md
+.splinter/**
+!.splinter/**/
+!.splinter/**/*.splinter.md
 
-# local env overrides (scratch.ini is safe to commit)
+# local env overrides (splinter.ini is safe to commit)
 .env
