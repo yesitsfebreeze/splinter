@@ -20,7 +20,7 @@
   ],
   "mcpServers": {
     "scratch": {
-      "command": "scratch",
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/scratch",
       "args": [],
       "env": {
         "SCRATCH_EXT": "rs",

@@ -1,0 +1,54 @@
+#!/bin/sh
+# scratch MCP launcher.
+#
+# On first run it downloads the prebuilt binary for this platform from the
+# matching GitHub release, caches it, then execs it. This lets the plugin work
+# with no local Rust toolchain — install the plugin and you are done.
+#
+# Dev override: set SCRATCH_BIN to an absolute path to use a local build, e.g.
+#   SCRATCH_BIN=target/debug/scratch
+set -eu
+
+VERSION="0.1.0"            # keep in sync with plugin.json and the vX.Y.Z release tag
+REPO="yesitsfebreeze/scratch"
+
+if [ "${SCRATCH_BIN:-}" != "" ]; then
+  exec "$SCRATCH_BIN" "$@"
+fi
+
+os=$(uname -s)
+arch=$(uname -m)
+case "$os" in
+  Linux) os=linux ;;
+  Darwin) os=macos ;;
+  *) echo "scratch: unsupported OS '$os' — build from source: cargo install --git https://github.com/$REPO" >&2; exit 1 ;;
+esac
+case "$arch" in
+  x86_64 | amd64) arch=x86_64 ;;
+  arm64 | aarch64) arch=aarch64 ;;
+  *) echo "scratch: unsupported architecture '$arch'" >&2; exit 1 ;;
+esac
+
+asset="scratch-${os}-${arch}.tar.gz"
+cache="${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/scratch}/v${VERSION}"
+bin="$cache/scratch"
+
+if [ ! -x "$bin" ]; then
+  mkdir -p "$cache"
+  url="https://github.com/$REPO/releases/download/v${VERSION}/${asset}"
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' EXIT
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$url" -o "$tmp/$asset"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$tmp/$asset" "$url"
+  else
+    echo "scratch: need curl or wget to download the binary" >&2
+    exit 1
+  fi
+  tar -xzf "$tmp/$asset" -C "$tmp"
+  mv "$tmp/scratch" "$bin"
+  chmod +x "$bin"
+fi
+
+exec "$bin" "$@"

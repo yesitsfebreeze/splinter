@@ -1,0 +1,61 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.asset }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            asset: scratch-linux-x86_64
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            asset: scratch-linux-aarch64
+          - runner: macos-13
+            target: x86_64-apple-darwin
+            asset: scratch-macos-x86_64
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            asset: scratch-macos-aarch64
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset: scratch-windows-x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add ${{ matrix.target }}
+          rustup target add wasm32-wasip1
+          rustup default stable
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package (unix)
+        if: runner.os != 'Windows'
+        run: tar -C target/${{ matrix.target }}/release -czf ${{ matrix.asset }}.tar.gz scratch
+
+      - name: Package (windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path target/${{ matrix.target }}/release/scratch.exe -DestinationPath ${{ matrix.asset }}.zip
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}.*
+          fail_on_unmatched_files: true
