@@ -34,7 +34,7 @@ new=$(python3 "$root/.githooks/bump-version.py") || {
   echo "scratch: version bump failed, aborting push" >&2
   exit 1
 }
-git -C "$root" add Cargo.toml Cargo.lock .claude-plugin/plugin.json .claude-plugin/marketplace.json bin/scratch || exit 1
+git -C "$root" add Cargo.toml Cargo.lock .claude-plugin/plugin.json .claude-plugin/marketplace.json || exit 1
 git -C "$root" commit -q -m "chore(release): bump version to $new" || exit 1
 echo "scratch: bumped version to $new" >&2
 

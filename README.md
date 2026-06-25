@@ -92,8 +92,9 @@ Launcher overrides: `SCRATCH_BIN=/path/to/scratch` uses a local build (skips the
 ## Develop / release
 
 - `cargo test` · `cargo clippy --all-targets -- -D warnings` · `cargo fmt` — CI enforces all three.
-- **Auto version bump:** a pre-push hook patch-bumps the version in lockstep (`Cargo.toml`, `Cargo.lock`, both manifests, `bin/scratch`) on every push to `master`. Enable once per clone: `git config core.hooksPath .githooks`. Skip a push with `SCRATCH_NO_BUMP=1 git push`. It re-pushes so the bump rides the same `git push`, so git prints a harmless `failed to push some refs` (the original push being superseded) — the push succeeds and the tree stays clean. Tag pushes and feature branches are not bumped.
-- Release: `git tag vX.Y.Z && git push origin vX.Y.Z` → builds + uploads per-platform binaries (use the current bumped version).
+- **Version is single-source:** `.claude-plugin/plugin.json` holds *the* version. The launcher reads it at runtime and downloads exactly `v<that>` — no version is duplicated in `bin/scratch`.
+- **Auto bump:** a pre-push hook patch-bumps the version in lockstep (`Cargo.toml`, `Cargo.lock`, `plugin.json`, `marketplace.json`) on every push to `master`. Enable once per clone: `git config core.hooksPath .githooks`. Skip with `SCRATCH_NO_BUMP=1 git push`. It re-pushes so the bump rides the same `git push`, so git prints a harmless `failed to push some refs` (the original push being superseded) — the push succeeds, tree stays clean. Tags/feature branches aren't bumped.
+- **Auto release:** `release.yml` runs on every push to `master`; if the current `plugin.json` version has no release yet, it builds the per-platform binaries and publishes `v<version>`. So every shipped version has a downloadable binary. (Pushing a `vX.Y.Z` tag manually also works.)
 
 ## License
 

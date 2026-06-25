@@ -40,12 +40,9 @@ if lock_new == lock:
 lock_path.write_text(lock_new)
 
 # JSON manifests — anchored on the old version string (only plugin versions match).
+# The launcher carries no version of its own; it reads plugin.json at runtime.
 for rel in (".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"):
     p = root / rel
     p.write_text(p.read_text().replace(f'"version": "{old}"', f'"version": "{new}"'))
-
-# Launcher.
-launcher = root / "bin/scratch"
-launcher.write_text(launcher.read_text().replace(f'VERSION="{old}"', f'VERSION="{new}"'))
 
 print(new)

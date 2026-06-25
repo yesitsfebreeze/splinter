@@ -1,7 +1,11 @@
 name: release
 
+# Publish a binary release for the plugin's current version. The launcher
+# downloads exactly v<plugin.json version>, so every version that lands on
+# master must have a matching release — this creates it automatically.
 on:
   push:
+    branches: [master]
     tags: ["v*"]
 
 permissions:
@@ -11,7 +15,34 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            ver="${GITHUB_REF_NAME#v}"
+          else
+            ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .claude-plugin/plugin.json | head -1)
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          if gh release view "v$ver" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "v$ver already released — nothing to do."
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "v$ver not released — building."
+          fi
+
   build:
+    needs: prepare
+    if: needs.prepare.outputs.release == 'true'
     name: ${{ matrix.asset }}
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -24,7 +55,7 @@ jobs:
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             asset: scratch-linux-aarch64
-          - runner: macos-13
+          - runner: macos-14
             target: x86_64-apple-darwin
             asset: scratch-macos-x86_64
           - runner: macos-14
@@ -57,5 +88,6 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ needs.prepare.outputs.version }}
           files: ${{ matrix.asset }}.*
           fail_on_unmatched_files: true
