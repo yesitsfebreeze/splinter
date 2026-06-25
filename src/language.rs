@@ -9,6 +9,7 @@ use crate::splitter::BodyFile;
 
 const BUILTIN_RS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_rs.wasm"));
 const BUILTIN_PY: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_py.wasm"));
+const BUILTIN_ODIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/split_language_odin.wasm"));
 
 #[derive(Clone, Debug)]
 pub struct Meta {
@@ -36,6 +37,9 @@ pub fn list() -> Vec<(String, String)> {
     }
     if !BUILTIN_PY.is_empty() {
         map.insert("py".into(), "builtin".into());
+    }
+    if !BUILTIN_ODIN.is_empty() {
+        map.insert("odin".into(), "builtin".into());
     }
 
     if let Some(home) = dirs::home_dir() {
@@ -87,6 +91,9 @@ pub fn load(ext: &str) -> Option<Vec<u8>> {
     }
     if ext == "py" && !BUILTIN_PY.is_empty() {
         return Some(BUILTIN_PY.to_vec());
+    }
+    if ext == "odin" && !BUILTIN_ODIN.is_empty() {
+        return Some(BUILTIN_ODIN.to_vec());
     }
 
     None

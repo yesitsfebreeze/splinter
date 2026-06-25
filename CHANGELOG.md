@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Added
+- Builtin **Odin** language module (`odin`, for `.odin` files): splits `name :: proc(…) -> ret { … }` into per-proc bodies, with the signature line for `open_source`. Skips proc *types* (`Cb :: proc(int) -> int`), proc groups (`proc{a, b}`), and foreign procs (`proc(…) ---`) which have no body; understands calling conventions (`proc "c"`), polymorphic params (`$T`), backtick raw strings, rune literals, and nested block comments. Lives at `languages/odin/`, embedded like `rs`/`py`.
 - `grep_files(query, root?, ext?)` — ripgrep over raw source files under a root (same exclusions as the indexer), attributing each hit to its owning function via the index. Finds matches even in files not yet split, so nothing is invisible pre-index.
 - `search_names(query, scope?)` — ripgrep over the index by name: function names and source paths, not file contents. Returns matching paths to hand to `read_body`/`outline` — token-cheap "find the fn/file by name".
 

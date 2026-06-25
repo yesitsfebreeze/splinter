@@ -6,9 +6,12 @@ fn main() {
     println!("cargo:rerun-if-changed=languages/rs/Cargo.toml");
     println!("cargo:rerun-if-changed=languages/py/src");
     println!("cargo:rerun-if-changed=languages/py/Cargo.toml");
+    println!("cargo:rerun-if-changed=languages/odin/src");
+    println!("cargo:rerun-if-changed=languages/odin/Cargo.toml");
 
     build_language("rs", "split_language_rs");
     build_language("py", "split_language_py");
+    build_language("odin", "split_language_odin");
 }
 
 fn build_language(lang: &str, crate_name: &str) {

@@ -221,6 +221,38 @@ fn python_extracts_defs_and_qualified_methods() {
 }
 
 #[test]
+fn odin_extracts_procs_and_skips_typedecls() {
+    let dir = workdir();
+    std::fs::write(
+        dir.join("src/m.odin"),
+        "package m\n\nCallback :: proc(a: int) -> int\n\nadd :: proc(a: int, b: int) -> int {\n\treturn a + b\n}\n\ngreet :: proc \"c\" (s: cstring) {\n\treturn\n}\n",
+    )
+    .unwrap();
+    let out = drive(
+        &dir,
+        &[
+            call(
+                1,
+                "index_dir",
+                serde_json::json!({ "src_dir": "src", "ext": "odin" }),
+            ),
+            call(
+                2,
+                "open_source",
+                serde_json::json!({ "source_path": "src/m.odin", "ext": "odin" }),
+            ),
+        ],
+    );
+    assert!(out[0].contains("indexed 1 files"), "index_dir: {}", out[0]);
+    assert!(out[1].contains("add"), "open_source: {}", out[1]);
+    assert!(out[1].contains("greet"), "open_source: {}", out[1]);
+    assert!(dir.join(".scratch/src/m/add.fs").exists());
+    assert!(dir.join(".scratch/src/m/greet.fs").exists());
+    // A bare proc *type* declaration has no body and must not be indexed.
+    assert!(!dir.join(".scratch/src/m/Callback.fs").exists());
+}
+
+#[test]
 fn validate_reports_clean_index() {
     let dir = workdir();
     std::fs::write(
