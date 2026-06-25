@@ -1,6 +1,6 @@
 [package]
 name = "scratch"
-version = "0.1.9"
+version = "0.1.10"
 edition = "2021"
 description = "MCP server: fn-level code index with per-file scratch memory"
 
