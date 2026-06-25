@@ -10,7 +10,7 @@
 #   SCRATCH_BIN=target/debug/scratch
 set -eu
 
-VERSION="0.1.1"            # cache key + preferred release; falls back to latest
+VERSION="0.1.2"            # cache key + preferred release; falls back to latest
 REPO="yesitsfebreeze/scratch"
 
 if [ "${SCRATCH_BIN:-}" != "" ]; then

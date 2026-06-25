@@ -1,6 +1,6 @@
 {
   "name": "scratch",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Fn-level code index MCP server. Splits source files into per-function body files for token-efficient navigation, with a persistent per-file scratch note for agent memory. Watcher re-splits on source change.",
   "author": {
     "name": "febreeze",
