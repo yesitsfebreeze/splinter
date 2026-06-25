@@ -46,16 +46,17 @@ src/parser.rs  →  .scratch/src/parser.skel.rs     skeleton (bodies replaced by
 
 | Tool | Does |
 |---|---|
-| `index_dir(src_dir)` | Bootstrap: split a whole tree |
-| `open_source(path)` | Function list by size + the file's scratch note |
+| `index_dir(src_dir)` | Bootstrap: split a whole tree (skips hidden / build / vendor dirs) |
+| `open_source(path)` | Function list (with signatures) by size + the file's scratch note |
 | `read_body(path)` | One function body |
-| `search_bodies(query)` | Grep across all functions |
+| `search_bodies(query)` | Grep across all functions; hits map back to `source:line [fn]` |
+| `ref_graph(path)` | Call graph: callers (`in`) + callees (`out`) for a fn name or `.fs` body |
 | `list_bodies(dir)` | Functions in a dir, by size |
 | `find_large()` | Functions over `SCRATCH_MAX_LOC` |
 | `read_scratch` / `write_scratch` | Read / write per-file memory |
 | `list_languages()` | Installed languages |
 
-Also: `split`, `dry_run_split`, `grep_source`, `validate`, `ref_graph`, `body_stats`, `diff_body`, `outline`.
+Also: `split`, `dry_run_split`, `grep_source`, `validate`, `body_stats`, `diff_body`, `outline`.
 
 ## Config
 
@@ -67,6 +68,7 @@ Env vars or a committable `scratch.ini` (env > ini > default).
 | `SCRATCH_EXT` | `rs` | Indexed extension |
 | `SCRATCH_MAX_LOC` | `256` | ⚠ / `find_large` threshold |
 | `SCRATCH_DEBOUNCE_MS` | `500` | Watcher debounce |
+| `SCRATCH_EXCLUDE` | — | Extra dir names to skip while indexing (comma-separated; hidden/`target`/`node_modules` are always skipped) |
 
 ## Languages
 

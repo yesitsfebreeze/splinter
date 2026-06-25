@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+- `ref_graph` is now a real function call graph: for a `.fs` body path or a bare fn name it reports callers (`in`) and callees (`out`), each with its source location, computed from the body index. A source-file path keeps the previous skeleton/bodies view.
+- `search_bodies` / `grep_source` hits now map back to the real `source:line` and owning fn (e.g. `src/wrap.rs:812 [handle_stdin_idle]: …`) instead of the `.fs` body offset.
+- `open_source` and `outline` show full fn signatures, not just names.
+
+### Fixed
+- Indexing no longer descends into hidden dirs, `worktrees`, `target`, `node_modules`, linked git worktrees (a `.git` *file* root, wherever they live), or paths in the new `SCRATCH_EXCLUDE` env — worktrees and build output no longer pollute the index (`walk_files` + watcher).
+
 ## [0.1.0]
 
 First release. (Project was renamed from `split`.)

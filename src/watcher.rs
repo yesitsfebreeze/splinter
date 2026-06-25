@@ -44,7 +44,10 @@ pub fn watch_with_debounce(
             Ok(event) if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) => {
                 for path in event.paths {
                     let path_ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                    if path_ext == src_ext && !path.to_string_lossy().contains(".skel.") {
+                    if path_ext == src_ext
+                        && !path.to_string_lossy().contains(".skel.")
+                        && !splitter::path_excluded(&path)
+                    {
                         if let Err(e) = on_source_change(&path, &index_dir, &src_ext) {
                             eprintln!("scratch error: {e}");
                         }

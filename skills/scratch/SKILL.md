@@ -19,9 +19,10 @@ For indexed source, use the index first; open the raw file only if you still nee
 ## Tools
 
 - `index_dir(src_dir)` — bootstrap: split a whole tree. Run once if `.scratch/` is empty.
-- `open_source(source_path)` — function list by size (⚠ over `SCRATCH_MAX_LOC`) + the file's scratch note.
+- `open_source(source_path)` — function list with signatures, by size (⚠ over `SCRATCH_MAX_LOC`) + the file's scratch note.
 - `read_body(path)` — one function body. First line is `§head <src>:<start>-<end> <name>`.
-- `search_bodies(query)` — grep across every indexed function.
+- `search_bodies(query)` — grep across every indexed function; each hit maps back to `source:line [fn]`.
+- `ref_graph(path)` — call graph for a fn name or `.fs` body: callers (`in`) and callees (`out`).
 - `list_bodies(dir)` — functions in a dir, by size.
 - `find_large()` — functions over `SCRATCH_MAX_LOC`.
 - `read_scratch(source_path)` / `write_scratch(source_path, content, append)` — per-file memory.
@@ -31,6 +32,7 @@ For indexed source, use the index first; open the raw file only if you still nee
 
 - `Read file` → `open_source`, then `read_body` for the parts you need.
 - `Grep` → `search_bodies`.
+- "who calls this / what does it call" → `ref_graph` instead of grepping the name by hand.
 - Editing → `read_body` for the `§head` source line range, then `Edit`/`Write` the **source** file; the watcher re-splits.
 - Anything you learn about a file → `write_scratch`. Check `read_scratch` before exploring.
 

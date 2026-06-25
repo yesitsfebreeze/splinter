@@ -50,7 +50,7 @@ pub fn list() -> Value {
         },
         {
             "name": "index_dir",
-            "description": "Recursively index all source files in a directory tree. Run once to bootstrap. Skips already-indexed files.",
+            "description": "Recursively index all source files in a directory tree. Run once to bootstrap. Skips already-indexed files, hidden dirs, git worktrees, build/vendor dirs (target, node_modules), and anything in SCRATCH_EXCLUDE.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -74,7 +74,7 @@ pub fn list() -> Value {
         },
         {
             "name": "search_bodies",
-            "description": "Search body files for pattern. Paginated via cursor.",
+            "description": "Search body files for pattern; each hit maps back to its source file:line and owning fn. Paginated via cursor.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -119,11 +119,11 @@ pub fn list() -> Value {
         },
         {
             "name": "ref_graph",
-            "description": "Reverse-lookup which sources reference a body, and which bodies a source includes.",
+            "description": "Call graph for a function: callers (in) and callees (out). Pass a .fs body path or a bare fn name. A source-file path instead lists the bodies it splits into.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "path":      { "type": "string" },
+                    "path":      { "type": "string", "description": ".fs body path, a bare fn name, or a source file" },
                     "direction": { "type": "string", "enum": ["in", "out", "both"] }
                 },
                 "required": ["path"]
@@ -153,7 +153,7 @@ pub fn list() -> Value {
         },
         {
             "name": "outline",
-            "description": "Symbol map of body/skeleton: fns, impls, modules with line numbers.",
+            "description": "Symbol map of body/skeleton: fn signatures, impls, structs, enums, traits, modules with line numbers.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "path": { "type": "string" } },
@@ -454,6 +454,7 @@ fn handle_open_source(args: Value) -> Result<String> {
     }
     entries.sort_by_key(|e| std::cmp::Reverse(e.0));
     let max_loc = max_loc_threshold();
+    let sigs = signatures_from_skeleton(&skel_path);
     let mut out = format!(
         "skeleton: {}\nbodies:   {}\n{}\n",
         skel_path.display(),
@@ -464,7 +465,11 @@ fn handle_open_source(args: Value) -> Result<String> {
         let fn_name = p.file_stem().unwrap_or_default().to_string_lossy();
         let loc = count_body_loc(p);
         let flag = if loc > max_loc { " ⚠" } else { "" };
-        out.push_str(&format!("{loc:6} loc  {fn_name}{flag}\n"));
+        let label = sigs
+            .get(call_name(&fn_name))
+            .map(String::as_str)
+            .unwrap_or(&fn_name);
+        out.push_str(&format!("{loc:6} loc  {label}{flag}\n"));
     }
     Ok(out.trim_end().to_string())
 }
@@ -593,76 +598,133 @@ fn handle_body_stats(args: Value) -> Result<String> {
 }
 
 fn handle_ref_graph(args: Value) -> Result<String> {
-    let path = PathBuf::from(str_arg(&args, "path")?);
+    let raw = str_arg(&args, "path")?;
     let direction = args["direction"].as_str().unwrap_or("both");
     let index_dir = index_root();
+    let path = PathBuf::from(raw);
 
     let is_body = path.extension().is_some_and(|e| e == "fs");
-    let mut out = String::new();
+    if !is_body && path.is_file() {
+        return ref_graph_source(&path, direction, &index_dir);
+    }
+    ref_graph_calls(raw, &path, is_body, direction, &index_dir)
+}
 
-    if is_body {
+/// Source-file view: the skeleton that includes this file's bodies (in) and the
+/// bodies it is split into (out).
+fn ref_graph_source(path: &Path, direction: &str, index_dir: &Path) -> Result<String> {
+    let skel_path = splitter::skeleton_path(path, index_dir);
+    let mut out = format!("source: {}\n", splitter::to_slash(path));
+    if !skel_path.exists() {
+        out.push_str(&format!("(no skeleton at {})\n", skel_path.display()));
+        return Ok(out);
+    }
+    if direction == "in" || direction == "both" {
         out.push_str(&format!(
-            "body: {}\n",
-            path.display().to_string().replace('\\', "/")
+            "in (skeleton): {}\n",
+            splitter::to_slash(&skel_path)
         ));
-        if direction == "in" || direction == "both" {
-            let mut refs: Vec<String> = Vec::new();
-            let body_slash = path.display().to_string().replace('\\', "/");
-            let body_name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-            for skel in walk_skel_files(&index_dir) {
-                let c = std::fs::read_to_string(&skel).unwrap_or_default();
-                for line in c.lines() {
-                    if let Some(refp) = splitter::marker_payload(line) {
-                        if refp == body_slash || refp.ends_with(&format!("/{}", body_name)) {
-                            refs.push(skel.display().to_string().replace('\\', "/"));
-                            break;
+    }
+    if direction == "out" || direction == "both" {
+        let c = std::fs::read_to_string(&skel_path)?;
+        let bodies: Vec<String> = c
+            .lines()
+            .filter_map(splitter::marker_payload)
+            .filter(|r| !r.starts_with("source "))
+            .map(|r| r.to_string())
+            .collect();
+        out.push_str(&format!("out ({}):\n", bodies.len()));
+        for b in bodies {
+            out.push_str(&format!("  {}\n", b));
+        }
+    }
+    Ok(out.trim_end().to_string())
+}
+
+/// Function-level call graph computed from the body index: callers (other bodies
+/// that call this fn) and callees (known fns this body calls). `target` may be a
+/// `.fs` body path or a bare fn name.
+fn ref_graph_calls(
+    raw: &str,
+    path: &Path,
+    is_body: bool,
+    direction: &str,
+    index_dir: &Path,
+) -> Result<String> {
+    let bodies = walk_fs_files(index_dir);
+    let mut defs_by_call: BTreeMap<String, Vec<(String, PathBuf)>> = BTreeMap::new();
+    for p in &bodies {
+        let stem = stem_of(p);
+        defs_by_call
+            .entry(call_name(&stem).to_string())
+            .or_default()
+            .push((stem, p.clone()));
+    }
+
+    let (target_name, target_bodies): (String, Vec<PathBuf>) = if is_body && path.exists() {
+        (stem_of(path), vec![path.to_path_buf()])
+    } else {
+        let key = if is_body {
+            stem_of(path)
+        } else {
+            raw.to_string()
+        };
+        let cn = call_name(&key).to_string();
+        let defs = defs_by_call.get(&cn).cloned().unwrap_or_default();
+        let exact: Vec<PathBuf> = defs
+            .iter()
+            .filter(|(s, _)| *s == key)
+            .map(|(_, p)| p.clone())
+            .collect();
+        let resolved = if exact.is_empty() {
+            defs.into_iter().map(|(_, p)| p).collect()
+        } else {
+            exact
+        };
+        (key, resolved)
+    };
+
+    if target_bodies.is_empty() {
+        return Ok(format!(
+            "no indexed function named `{raw}` (pass a .fs body path or a known fn name)"
+        ));
+    }
+
+    let tcn = call_name(&target_name).to_string();
+    let target_set: BTreeSet<PathBuf> = target_bodies.iter().cloned().collect();
+    let def_locs: Vec<String> = target_bodies.iter().map(|p| head_loc(p)).collect();
+    let mut out = format!("fn: {} ({})\n", target_name, def_locs.join(", "));
+
+    if direction == "in" || direction == "both" {
+        let mut callers: BTreeSet<(String, String)> = BTreeSet::new();
+        for bp in &bodies {
+            if target_set.contains(bp) {
+                continue;
+            }
+            let text = std::fs::read_to_string(bp).unwrap_or_default();
+            if calls_in_text(&strip_body_markers(&text)).contains(&tcn) {
+                let loc = head_loc_of(text.lines().next(), bp);
+                callers.insert((stem_of(bp), loc));
+            }
+        }
+        out.push_str(&format_edges("callers (in)", &callers));
+    }
+
+    if direction == "out" || direction == "both" {
+        let mut callees: BTreeSet<(String, String)> = BTreeSet::new();
+        for bp in &target_bodies {
+            let text = std::fs::read_to_string(bp).unwrap_or_default();
+            for c in calls_in_text(&strip_body_markers(&text)) {
+                if let Some(defs) = defs_by_call.get(&c) {
+                    for (stem, dp) in defs {
+                        if stem != &target_name {
+                            callees.insert((stem.clone(), head_loc(dp)));
                         }
                     }
                 }
             }
-            out.push_str(&format!("in ({}):\n", refs.len()));
-            for r in refs {
-                out.push_str(&format!("  {}\n", r));
-            }
         }
-        if direction == "out" || direction == "both" {
-            out.push_str("out: not applicable for body\n");
-        }
-    } else {
-        let skel_path = splitter::skeleton_path(&path, &index_dir);
-        out.push_str(&format!(
-            "source: {}\n",
-            path.display().to_string().replace('\\', "/")
-        ));
-        if !skel_path.exists() {
-            out.push_str(&format!("(no skeleton at {})\n", skel_path.display()));
-            return Ok(out);
-        }
-        if direction == "in" || direction == "both" {
-            out.push_str(&format!(
-                "in (skeleton): {}\n",
-                skel_path.display().to_string().replace('\\', "/")
-            ));
-        }
-        if direction == "out" || direction == "both" {
-            let c = std::fs::read_to_string(&skel_path)?;
-            let mut bodies: Vec<String> = Vec::new();
-            for line in c.lines() {
-                if let Some(refp) = splitter::marker_payload(line) {
-                    if refp.starts_with("source ") {
-                        continue;
-                    }
-                    bodies.push(refp.to_string());
-                }
-            }
-            out.push_str(&format!("out ({}):\n", bodies.len()));
-            for b in bodies {
-                out.push_str(&format!("  {}\n", b));
-            }
-        }
+        out.push_str(&format_edges("callees (out)", &callees));
     }
 
     Ok(out.trim_end().to_string())
@@ -826,41 +888,14 @@ fn handle_outline(args: Value) -> Result<String> {
     let content = std::fs::read_to_string(&path)?;
     let re_kinds = ["fn", "impl", "mod", "struct", "enum", "trait"];
     let mut out = String::new();
-    out.push_str(&format!(
-        "outline: {}\n",
-        path.display().to_string().replace('\\', "/")
-    ));
+    out.push_str(&format!("outline: {}\n", splitter::to_slash(&path)));
     for (i, line) in content.lines().enumerate() {
         let trimmed = line.trim_start();
         if trimmed.starts_with("//") {
             continue;
         }
         let indent = line.len() - trimmed.len();
-        let mut rest = trimmed;
-        for prefix in [
-            "pub(crate) ",
-            "pub(super) ",
-            "pub ",
-            "async ",
-            "unsafe ",
-            "default ",
-        ] {
-            if rest.starts_with(prefix) {
-                rest = &rest[prefix.len()..];
-            }
-        }
-        for prefix in [
-            "pub(crate) ",
-            "pub(super) ",
-            "pub ",
-            "async ",
-            "unsafe ",
-            "default ",
-        ] {
-            if rest.starts_with(prefix) {
-                rest = &rest[prefix.len()..];
-            }
-        }
+        let rest = strip_item_prefixes(trimmed);
         for k in &re_kinds {
             let kw = format!("{} ", k);
             if rest.starts_with(&kw) {
@@ -873,11 +908,15 @@ fn handle_outline(args: Value) -> Result<String> {
                     .collect();
                 let name = name.split_whitespace().next().unwrap_or("").to_string();
                 if !name.is_empty() {
+                    let label = if *k == "fn" {
+                        item_signature(trimmed)
+                    } else {
+                        format!("{k} {name}")
+                    };
                     out.push_str(&format!(
-                        "{:width$}{} {}  (line {})\n",
+                        "{:width$}{}  (line {})\n",
                         "",
-                        k,
-                        name,
+                        label,
                         i + 1,
                         width = indent
                     ));
@@ -988,6 +1027,10 @@ fn walk_files(dir: &Path, ext: &str) -> Vec<PathBuf> {
     for entry in rd.filter_map(|e| e.ok()) {
         let path = entry.path();
         if path.is_dir() {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if splitter::excluded_dir_name(name) || splitter::is_git_worktree_root(&path) {
+                continue;
+            }
             out.extend(walk_files(&path, ext));
         } else if path.extension().is_some_and(|e| e == ext)
             && !path.to_string_lossy().contains(".skel.")
@@ -1067,12 +1110,29 @@ fn grep_paths(paths: &[PathBuf], m: &Matcher, skip_section_markers: bool) -> Res
             Ok(c) => c,
             Err(_) => continue,
         };
+        let is_body = path.extension().is_some_and(|e| e == "fs");
+        // A body's line `i` (0-based, line 0 is the §head) maps back to source
+        // line `head.start + i`, so a hit points at the real file, not the .fs.
+        let head = if is_body {
+            content.lines().next().and_then(parse_head_line)
+        } else {
+            None
+        };
+        let name = if is_body {
+            stem_of(path)
+        } else {
+            String::new()
+        };
         for (i, line) in content.lines().enumerate() {
             if skip_section_markers && splitter::is_marker_line(line) {
                 continue;
             }
             if matcher_hits(m, line) {
-                results.push(format!("{}:{}: {}", path.display(), i + 1, line));
+                let entry = match &head {
+                    Some(h) => format!("{}:{} [{}]: {}", h.src, h.start + i, name, line),
+                    None => format!("{}:{}: {}", splitter::to_slash(path), i + 1, line),
+                };
+                results.push(entry);
             }
         }
     }
@@ -1203,6 +1263,165 @@ fn extract_fn_region(source_path: &Path, fn_name: &str) -> Option<String> {
 
 fn is_ident_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
+}
+
+fn is_ident_start_byte(b: u8) -> bool {
+    b.is_ascii_alphabetic() || b == b'_'
+}
+
+fn stem_of(p: &Path) -> String {
+    p.file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// The matchable call name: the last `.`-segment of a body stem, so a Python
+/// method body `Foo.bar` is found by a `bar(` call site.
+fn call_name(stem: &str) -> &str {
+    stem.rsplit('.').next().unwrap_or(stem)
+}
+
+struct Head {
+    src: String,
+    start: usize,
+}
+
+impl Head {
+    fn loc(&self) -> String {
+        format!("{}:{}", self.src, self.start)
+    }
+}
+
+fn parse_head_line(line: &str) -> Option<Head> {
+    let rest = splitter::marker_payload(line)?.strip_prefix("head ")?;
+    let (loc, _name) = rest.rsplit_once(' ')?;
+    let (src, span) = loc.rsplit_once(':')?;
+    let start = span.split('-').next()?.trim().parse().ok()?;
+    Some(Head {
+        src: src.to_string(),
+        start,
+    })
+}
+
+/// `<source>:<decl-line>` from a body's first line, falling back to the path.
+fn head_loc_of(first_line: Option<&str>, fallback: &Path) -> String {
+    first_line
+        .and_then(parse_head_line)
+        .map(|h| h.loc())
+        .unwrap_or_else(|| splitter::to_slash(fallback))
+}
+
+/// `<source>:<decl-line>` for a body, falling back to the body path.
+fn head_loc(body: &Path) -> String {
+    let c = std::fs::read_to_string(body).unwrap_or_default();
+    head_loc_of(c.lines().next(), body)
+}
+
+/// Identifiers that appear in call position (`name(` or `name (`) — the edges of
+/// the call graph. Keyword call-likes (`if (`) are filtered later by the known-fn
+/// universe.
+fn calls_in_text(text: &str) -> BTreeSet<String> {
+    let b = text.as_bytes();
+    let mut set = BTreeSet::new();
+    let mut i = 0;
+    while i < b.len() {
+        if is_ident_start_byte(b[i]) {
+            let s = i;
+            while i < b.len() && is_ident_byte(b[i]) {
+                i += 1;
+            }
+            let mut j = i;
+            while j < b.len() && (b[j] == b' ' || b[j] == b'\t') {
+                j += 1;
+            }
+            if j < b.len() && b[j] == b'(' {
+                set.insert(text[s..i].to_string());
+            }
+        } else {
+            i += 1;
+        }
+    }
+    set
+}
+
+fn format_edges(label: &str, edges: &BTreeSet<(String, String)>) -> String {
+    const CAP: usize = 100;
+    let mut s = format!("{label} ({}):\n", edges.len());
+    for (i, (name, loc)) in edges.iter().enumerate() {
+        if i >= CAP {
+            s.push_str(&format!("  … {} more\n", edges.len() - CAP));
+            break;
+        }
+        s.push_str(&format!("  {name:<28}  {loc}\n"));
+    }
+    s
+}
+
+/// Best-effort fn signatures from a skeleton (the skeleton keeps each `fn …`
+/// declaration; only the body is replaced by a ref). Maps fn name -> decl line.
+fn signatures_from_skeleton(skel: &Path) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    let Ok(content) = std::fs::read_to_string(skel) else {
+        return map;
+    };
+    for line in content.lines() {
+        let t = line.trim_start();
+        if t.starts_with("//") {
+            continue;
+        }
+        if let Some((name, sig)) = fn_decl(t) {
+            map.entry(name).or_insert(sig);
+        }
+    }
+    map
+}
+
+/// Strip leading visibility / modifier keywords so the next token is the item
+/// keyword (`fn`, `struct`, …).
+fn strip_item_prefixes(mut s: &str) -> &str {
+    const PREFIXES: [&str; 8] = [
+        "pub(crate) ",
+        "pub(super) ",
+        "pub ",
+        "async ",
+        "unsafe ",
+        "const ",
+        "default ",
+        "extern ",
+    ];
+    'outer: loop {
+        for p in PREFIXES {
+            if let Some(r) = s.strip_prefix(p) {
+                s = r;
+                continue 'outer;
+            }
+        }
+        return s;
+    }
+}
+
+/// A declaration line trimmed to its signature (everything before the body `{`).
+fn item_signature(line: &str) -> String {
+    line.split('{')
+        .next()
+        .unwrap_or(line)
+        .trim_end()
+        .to_string()
+}
+
+/// Parse a `fn` declaration line into (name, cleaned signature without the body
+/// brace). Tolerates `pub`/`async`/`unsafe`/`const`/`default` prefixes.
+fn fn_decl(line: &str) -> Option<(String, String)> {
+    let after = strip_item_prefixes(line).strip_prefix("fn ")?;
+    let name: String = after
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .collect();
+    if name.is_empty() {
+        return None;
+    }
+    Some((name, item_signature(line)))
 }
 
 fn naive_diff(a: &str, b: &str) -> String {

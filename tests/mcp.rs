@@ -417,3 +417,144 @@ fn open_source_with_absolute_path_finds_bodies() {
         out[1]
     );
 }
+
+#[test]
+fn ref_graph_reports_callers_and_callees() {
+    let dir = workdir();
+    std::fs::write(
+        dir.join("src/g.rs"),
+        "fn helper() -> i32 {\n    1\n}\nfn caller() -> i32 {\n    helper() + helper()\n}\n",
+    )
+    .unwrap();
+    let out = drive(
+        &dir,
+        &[
+            call(1, "index_dir", serde_json::json!({ "src_dir": "src" })),
+            call(
+                2,
+                "ref_graph",
+                serde_json::json!({ "path": ".scratch/src/g/caller.fs", "direction": "out" }),
+            ),
+            // Bare fn name resolves to its body for the reverse lookup.
+            call(
+                3,
+                "ref_graph",
+                serde_json::json!({ "path": "helper", "direction": "in" }),
+            ),
+        ],
+    );
+    assert!(out[1].contains("callees"), "out section: {}", out[1]);
+    assert!(out[1].contains("helper"), "caller calls helper: {}", out[1]);
+    assert!(out[2].contains("callers"), "in section: {}", out[2]);
+    assert!(
+        out[2].contains("caller"),
+        "helper called by caller: {}",
+        out[2]
+    );
+}
+
+#[test]
+fn search_maps_hits_to_source_file_and_fn() {
+    let dir = workdir();
+    std::fs::write(
+        dir.join("src/s.rs"),
+        "fn greet() -> &'static str {\n    \"hi\"\n}\nfn helper(n: i32) -> i32 {\n    n * 2\n}\n",
+    )
+    .unwrap();
+    let out = drive(
+        &dir,
+        &[
+            call(1, "index_dir", serde_json::json!({ "src_dir": "src" })),
+            call(2, "search_bodies", serde_json::json!({ "query": "n * 2" })),
+        ],
+    );
+    // `n * 2` is the 5th source line of src/s.rs, inside `helper`.
+    assert!(out[1].contains("src/s.rs:5"), "source line map: {}", out[1]);
+    assert!(out[1].contains("[helper]"), "owning fn: {}", out[1]);
+}
+
+#[test]
+fn index_dir_skips_hidden_dirs() {
+    let dir = workdir();
+    std::fs::create_dir_all(dir.join("src/.hidden")).unwrap();
+    std::fs::write(dir.join("src/real.rs"), "fn r() {\n    let _ = 1;\n}\n").unwrap();
+    std::fs::write(
+        dir.join("src/.hidden/secret.rs"),
+        "fn s() {\n    let _ = 2;\n}\n",
+    )
+    .unwrap();
+    let out = drive(
+        &dir,
+        &[call(
+            1,
+            "index_dir",
+            serde_json::json!({ "src_dir": "src" }),
+        )],
+    );
+    assert!(
+        out[0].contains("indexed 1 files"),
+        "only real.rs: {}",
+        out[0]
+    );
+    assert!(dir.join(".scratch/src/real.skel.rs").exists());
+    assert!(
+        !dir.join(".scratch/src/.hidden/secret.skel.rs").exists(),
+        "hidden dir must not be indexed"
+    );
+}
+
+#[test]
+fn index_dir_skips_git_worktrees() {
+    let dir = workdir();
+    // A linked worktree root has a `.git` *file* (a gitdir pointer), not a dir.
+    std::fs::create_dir_all(dir.join("src/wt")).unwrap();
+    std::fs::write(dir.join("src/wt/.git"), "gitdir: /somewhere/.git\n").unwrap();
+    std::fs::write(dir.join("src/wt/inner.rs"), "fn w() {\n    let _ = 1;\n}\n").unwrap();
+    std::fs::write(dir.join("src/real.rs"), "fn r() {\n    let _ = 1;\n}\n").unwrap();
+    let out = drive(
+        &dir,
+        &[call(
+            1,
+            "index_dir",
+            serde_json::json!({ "src_dir": "src" }),
+        )],
+    );
+    assert!(
+        out[0].contains("indexed 1 files"),
+        "only real.rs: {}",
+        out[0]
+    );
+    assert!(
+        !dir.join(".scratch/src/wt/inner.skel.rs").exists(),
+        "worktree must not be indexed"
+    );
+}
+
+#[test]
+fn open_source_and_outline_show_signatures() {
+    let dir = workdir();
+    std::fs::write(
+        dir.join("src/sig.rs"),
+        "pub fn greet(name: &str) -> String {\n    name.to_string()\n}\n",
+    )
+    .unwrap();
+    let out = drive(
+        &dir,
+        &[
+            call(1, "index_dir", serde_json::json!({ "src_dir": "src" })),
+            call(
+                2,
+                "open_source",
+                serde_json::json!({ "source_path": "src/sig.rs" }),
+            ),
+            call(
+                3,
+                "outline",
+                serde_json::json!({ "path": ".scratch/src/sig.skel.rs" }),
+            ),
+        ],
+    );
+    let sig = "fn greet(name: &str) -> String";
+    assert!(out[1].contains(sig), "open_source signature: {}", out[1]);
+    assert!(out[2].contains(sig), "outline signature: {}", out[2]);
+}

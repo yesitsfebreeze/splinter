@@ -471,6 +471,43 @@ pub fn is_marker_line(line: &str) -> bool {
     marker_payload(line).is_some()
 }
 
+/// A directory that must never be walked into when indexing source: hidden dirs
+/// (`.git`, `.scratch`, nested `.claude/worktrees`, …), `worktrees` trees, the
+/// usual build/vendor dirs, and anything listed in `SCRATCH_EXCLUDE`.
+pub fn excluded_dir_name(name: &str) -> bool {
+    if name.starts_with('.') {
+        return true;
+    }
+    matches!(name, "target" | "node_modules" | "worktrees")
+        || std::env::var("SCRATCH_EXCLUDE").is_ok_and(|v| v.split(',').any(|s| s.trim() == name))
+}
+
+/// A linked git worktree root: its `.git` is a regular file (a `gitdir:` pointer),
+/// not a directory. The main checkout has a `.git` directory, so it is unaffected.
+/// Lets us skip worktrees wherever they live, not just under a `worktrees/` dir.
+pub fn is_git_worktree_root(dir: &Path) -> bool {
+    dir.join(".git").is_file()
+}
+
+/// True when a path sits in a tree the indexer must ignore: any component is an
+/// excluded dir, or any ancestor is a linked git worktree root. Used by the
+/// watcher to skip re-splitting files under build/vendor/hidden/worktree trees.
+pub fn path_excluded(p: &Path) -> bool {
+    if p.components()
+        .any(|c| matches!(c, Component::Normal(n) if excluded_dir_name(&n.to_string_lossy())))
+    {
+        return true;
+    }
+    let mut cur = p.parent();
+    while let Some(dir) = cur {
+        if is_git_worktree_root(dir) {
+            return true;
+        }
+        cur = dir.parent();
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
