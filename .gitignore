@@ -3,8 +3,11 @@ target/
 languages/rs/target/
 languages/py/target/
 
-# generated index (not source of truth)
-.split/
+# generated index (not source of truth) — but keep the scratch notes,
+# they are durable agent memory, not derived cache.
+.scratch/**
+!.scratch/**/
+!.scratch/**/*.scratch.md
 
-# local env overrides (split.ini is safe to commit)
+# local env overrides (scratch.ini is safe to commit)
 .env

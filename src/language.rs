@@ -39,7 +39,7 @@ pub fn list() -> Vec<(String, String)> {
     }
 
     if let Some(home) = dirs::home_dir() {
-        let user_dir = home.join(".config/split/languages");
+        let user_dir = home.join(".config/scratch/languages");
         if let Ok(rd) = std::fs::read_dir(&user_dir) {
             for e in rd.flatten() {
                 let p = e.path();
@@ -52,7 +52,7 @@ pub fn list() -> Vec<(String, String)> {
         }
     }
 
-    let proj = PathBuf::from(".split/languages");
+    let proj = PathBuf::from(".scratch/languages");
     if let Ok(rd) = std::fs::read_dir(&proj) {
         for e in rd.flatten() {
             let p = e.path();
@@ -70,13 +70,13 @@ pub fn list() -> Vec<(String, String)> {
 pub fn load(ext: &str) -> Option<Vec<u8>> {
     let filename = format!("{ext}.wasm");
 
-    let project = PathBuf::from(".split/languages").join(&filename);
+    let project = PathBuf::from(".scratch/languages").join(&filename);
     if let Ok(b) = std::fs::read(&project) {
         return Some(b);
     }
 
     if let Some(home) = dirs::home_dir() {
-        let user = home.join(".config/split/languages").join(&filename);
+        let user = home.join(".config/scratch/languages").join(&filename);
         if let Ok(b) = std::fs::read(&user) {
             return Some(b);
         }
@@ -139,7 +139,9 @@ pub fn load_meta(wasm: &[u8]) -> Result<Meta> {
         comment: String,
     }
     let raw: Raw = serde_json::from_slice(&buf)?;
-    Ok(Meta { comment: raw.comment })
+    Ok(Meta {
+        comment: raw.comment,
+    })
 }
 
 pub fn split(
@@ -162,7 +164,10 @@ pub fn split(
     let out = run_wasm(wasm, &input_str)?;
 
     #[derive(serde::Deserialize)]
-    struct Resp { skeleton: String, bodies: Vec<RespBody> }
+    struct Resp {
+        skeleton: String,
+        bodies: Vec<RespBody>,
+    }
     #[derive(serde::Deserialize)]
     struct RespBody {
         path: String,
@@ -174,10 +179,19 @@ pub fn split(
 
     let resp: Resp = serde_json::from_slice(&out)?;
     let comment = meta_for_ext(ext).comment;
-    let bodies = resp.bodies.into_iter()
+    let bodies = resp
+        .bodies
+        .into_iter()
         .map(|b| BodyFile {
             path: PathBuf::from(b.path),
-            content: crate::splitter::wrap_body(&comment, &src_display, &b.name, &b.raw, b.line_start, b.line_end),
+            content: crate::splitter::wrap_body(
+                &comment,
+                &src_display,
+                &b.name,
+                &b.raw,
+                b.line_start,
+                b.line_end,
+            ),
         })
         .collect();
 
@@ -195,7 +209,8 @@ fn run_wasm(wasm: &[u8], input: &str) -> Result<Vec<u8>> {
     let module = Module::from_binary(&engine, wasm)?;
     let instance = linker.instantiate(&mut store, &module)?;
 
-    let memory = instance.get_memory(&mut store, "memory")
+    let memory = instance
+        .get_memory(&mut store, "memory")
         .ok_or_else(|| anyhow!("language module has no memory export"))?;
 
     let alloc = instance.get_typed_func::<i32, i32>(&mut store, "wasm_alloc")?;

@@ -1,11 +1,11 @@
 [package]
-name = "split"
+name = "scratch"
 version = "0.1.0"
 edition = "2021"
-description = "MCP server: fn-level code index with bidirectional sync"
+description = "MCP server: fn-level code index with per-file scratch memory"
 
 [[bin]]
-name = "split"
+name = "scratch"
 path = "src/main.rs"
 
 [dependencies]

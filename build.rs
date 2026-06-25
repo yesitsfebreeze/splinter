@@ -26,9 +26,7 @@ fn build_language(lang: &str, crate_name: &str) {
             .unwrap_or(false);
 
         if ok {
-            let src = format!(
-                "languages/{lang}/target/{target}/release/{crate_name}.wasm"
-            );
+            let src = format!("languages/{lang}/target/{target}/release/{crate_name}.wasm");
             if std::fs::copy(&src, &dst).is_ok() {
                 return;
             }

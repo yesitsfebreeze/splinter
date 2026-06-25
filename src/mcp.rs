@@ -29,11 +29,21 @@ struct ErrObj {
 }
 
 fn ok(id: Option<Value>, result: Value) -> Resp {
-    Resp { jsonrpc: "2.0".into(), id, result: Some(result), error: None }
+    Resp {
+        jsonrpc: "2.0".into(),
+        id,
+        result: Some(result),
+        error: None,
+    }
 }
 
 fn err(id: Option<Value>, code: i32, msg: String) -> Resp {
-    Resp { jsonrpc: "2.0".into(), id, result: None, error: Some(ErrObj { code, message: msg }) }
+    Resp {
+        jsonrpc: "2.0".into(),
+        id,
+        result: None,
+        error: Some(ErrObj { code, message: msg }),
+    }
 }
 
 pub async fn handle(input: &str) -> Option<Resp> {
@@ -42,9 +52,7 @@ pub async fn handle(input: &str) -> Option<Resp> {
         Err(e) => return Some(err(None, -32700, e.to_string())),
     };
 
-    if req.id.is_none() {
-        return None;
-    }
+    req.id.as_ref()?;
 
     let id = req.id.clone();
     let params = req.params.unwrap_or(json!({}));
@@ -55,7 +63,7 @@ pub async fn handle(input: &str) -> Option<Resp> {
             json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": "split", "version": "0.1.0" }
+                "serverInfo": { "name": "scratch", "version": "0.1.0" }
             }),
         ),
         "tools/list" => ok(id, json!({ "tools": tools::list() })),

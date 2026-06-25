@@ -1,13 +1,13 @@
 {
-  "name": "split",
+  "name": "scratch",
   "version": "0.1.0",
-  "description": "Fn-level code index MCP server. Splits source files into per-function body files for token-efficient navigation. Bidirectional watcher syncs edits.",
+  "description": "Fn-level code index MCP server. Splits source files into per-function body files for token-efficient navigation, with a persistent per-file scratch note for agent memory. Watcher re-splits on source change.",
   "author": {
     "name": "febreeze",
-    "url": "https://github.com/febreeze"
+    "url": "https://github.com/yesitsfebreeze"
   },
-  "homepage": "https://github.com/febreeze/split",
-  "repository": "https://github.com/febreeze/split",
+  "homepage": "https://github.com/yesitsfebreeze/scratch",
+  "repository": "https://github.com/yesitsfebreeze/scratch",
   "license": "MIT",
   "keywords": [
     "mcp",
@@ -15,18 +15,18 @@
     "code-navigation",
     "token-efficient",
     "rust",
-    "split"
+    "scratch",
+    "memory"
   ],
   "mcpServers": {
-    "split": {
-      "command": "split",
+    "scratch": {
+      "command": "scratch",
       "args": [],
       "env": {
-        "SPLIT_EXT": "rs",
-        "SPLIT_INDEX_DIR": ".split",
-        "SPLIT_SRC_DIR": "src",
-        "SPLIT_DEBOUNCE_MS": "120000",
-        "SPLIT_MAX_LOC": "256"
+        "SCRATCH_EXT": "rs",
+        "SCRATCH_SRC_DIR": "src",
+        "SCRATCH_DEBOUNCE_MS": "120000",
+        "SCRATCH_MAX_LOC": "256"
       }
     }
   },

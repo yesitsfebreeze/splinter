@@ -10,9 +10,9 @@
   },
   "plugins": [
     {
-      "name": "split",
+      "name": "scratch",
       "source": "./",
-      "description": "Fn-level code index MCP server. Splits source files into per-function body files under .split/. Token-efficient: open_source returns fn map, read_body loads one fn, search_bodies greps 3000+ fns in ~50 tokens. Bidirectional watcher syncs .fs edits back to source. WASM language modules for any language.",
+      "description": "Fn-level code index MCP server. Splits source files into per-function body files under .scratch/. Token-efficient: open_source returns fn map, read_body loads one fn, search_bodies greps 3000+ fns in ~50 tokens. Each source file gets a persistent scratch note for durable agent memory. One-way watcher re-splits on source change. WASM language modules for any language.",
       "version": "0.1.0",
       "author": {
         "name": "yesitsfebreeze"
@@ -24,7 +24,8 @@
         "code-navigation",
         "token-efficient",
         "rust",
-        "split",
+        "scratch",
+        "memory",
         "watcher",
         "wasm"
       ]
