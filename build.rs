@@ -2,62 +2,28 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
-    println!("cargo:rerun-if-changed=languages/rs/src");
-    println!("cargo:rerun-if-changed=languages/rs/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/py/src");
-    println!("cargo:rerun-if-changed=languages/py/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/odin/src");
-    println!("cargo:rerun-if-changed=languages/odin/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/go/src");
-    println!("cargo:rerun-if-changed=languages/go/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/php/src");
-    println!("cargo:rerun-if-changed=languages/php/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/html/src");
-    println!("cargo:rerun-if-changed=languages/html/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/cpp/src");
-    println!("cargo:rerun-if-changed=languages/cpp/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/js/src");
-    println!("cargo:rerun-if-changed=languages/js/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/ts/src");
-    println!("cargo:rerun-if-changed=languages/ts/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/java/src");
-    println!("cargo:rerun-if-changed=languages/java/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/cs/src");
-    println!("cargo:rerun-if-changed=languages/cs/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/kt/src");
-    println!("cargo:rerun-if-changed=languages/kt/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/swift/src");
-    println!("cargo:rerun-if-changed=languages/swift/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/sh/src");
-    println!("cargo:rerun-if-changed=languages/sh/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/lua/src");
-    println!("cargo:rerun-if-changed=languages/lua/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/rb/src");
-    println!("cargo:rerun-if-changed=languages/rb/Cargo.toml");
-    println!("cargo:rerun-if-changed=languages/sql/src");
-    println!("cargo:rerun-if-changed=languages/sql/Cargo.toml");
+    // a new language lands in src/language.rs's BUILTINS table; rerunning on it
+    // lets the discovery below pick up the new languages/<lang> dir
+    println!("cargo:rerun-if-changed=src/language.rs");
 
-    build_language("rs", "split_language_rs");
-    build_language("py", "split_language_py");
-    build_language("odin", "split_language_odin");
-    build_language("go", "split_language_go");
-    build_language("php", "split_language_php");
-    build_language("html", "split_language_html");
-    build_language("cpp", "split_language_cpp");
-    build_language("js", "split_language_js");
-    build_language("ts", "split_language_ts");
-    build_language("java", "split_language_java");
-    build_language("cs", "split_language_cs");
-    build_language("kt", "split_language_kt");
-    build_language("swift", "split_language_swift");
-    build_language("sh", "split_language_sh");
-    build_language("lua", "split_language_lua");
-    build_language("rb", "split_language_rb");
-    build_language("sql", "split_language_sql");
+    let mut langs: Vec<String> = std::fs::read_dir("languages")
+        .expect("languages/ directory missing")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().join("Cargo.toml").exists())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect();
+    langs.sort();
+
+    for lang in &langs {
+        println!("cargo:rerun-if-changed=languages/{lang}/src");
+        println!("cargo:rerun-if-changed=languages/{lang}/Cargo.toml");
+        build_language(lang);
+    }
 }
 
-fn build_language(lang: &str, crate_name: &str) {
+fn build_language(lang: &str) {
     let out_dir = std::env::var("OUT_DIR").unwrap();
+    let crate_name = format!("split_language_{lang}");
     let dst = format!("{out_dir}/{crate_name}.wasm");
     let manifest_str = format!("languages/{lang}/Cargo.toml");
     let manifest = Path::new(&manifest_str);

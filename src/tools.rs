@@ -14,7 +14,7 @@ pub fn list() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "source_path": { "type": "string", "description": "Path to .rs file" }
+                    "source_path": { "type": "string", "description": "Path to source file" }
                 },
                 "required": ["source_path"]
             }

@@ -76,7 +76,7 @@ Env vars or a committable `splinter.ini` (env > ini > default).
 
 ## Languages
 
-Builtin: `rs`, `py`, `odin`, `go`, `php`, `html`, `js`, `cpp`. Add any language as a `wasm32-wasip1` module at `.splinter/languages/<ext>.wasm` (project) or `~/.config/splinter/languages/<ext>.wasm` (user); resolution project > user > builtin. Unknown extensions store the whole file as one body. Module exports: `wasm_alloc`, `language_split`, `language_result_ptr`, `language_meta_ptr`, `language_meta_len`.
+Builtin: `rs`, `py`, `odin`, `go`, `php`, `html`, `cpp` (+ `c`/headers), `js` (+ `jsx`/`mjs`/`cjs`), `ts` (+ `tsx`/`mts`/`cts`), `java`, `cs`, `kt` (+ `kts`), `swift`, `sh` (+ `bash`), `lua`, `rb`, `sql`. Add any language as a `wasm32-wasip1` module at `.splinter/languages/<ext>.wasm` (project) or `~/.config/splinter/languages/<ext>.wasm` (user); resolution project > user > builtin. Unknown extensions store the whole file as one body. Module exports: `wasm_alloc`, `language_split`, `language_result_ptr`, `language_meta_ptr`, `language_meta_len`.
 
 `language_split` returns JSON `{ skeleton, bodies: [{ path, name, signature, raw, line_start, line_end }] }`. `signature` is the language's one-line declaration for the function (the bit `open_source` shows); it is optional — omit it and bodies fall back to the bare name. Signatures are a language concern, so each module owns its own; core never parses declarations.
 

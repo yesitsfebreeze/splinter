@@ -22,11 +22,19 @@ For indexed source, use the index first; open the raw file only if you still nee
 - `open_source(source_path)` — function list with signatures, by size (⚠ over `SPLINTER_MAX_LOC`) + the file's splinter note.
 - `read_body(path)` — one function body. First line is `§head <src>:<start>-<end> <name>`.
 - `search_bodies(query)` — grep across every indexed function; each hit maps back to `source:line [fn]`.
+- `search_names(query)` — regex over fn names + source paths only; returns paths, token-cheap.
+- `grep_files(query)` — ripgrep raw source under a root; finds matches even in unindexed files.
+- `grep_source(query)` — unified search across skeletons and bodies (`scope`: all | skel | body).
 - `ref_graph(path)` — call graph for a fn name or `.fs` body: callers (`in`) and callees (`out`).
+- `outline(path)` — symbol map of a body/skeleton: fns, impls, structs, enums, traits, modules.
 - `list_bodies(dir)` — functions in a dir, by size.
 - `find_large()` — functions over `SPLINTER_MAX_LOC`.
 - `read_splinter(source_path)` / `write_splinter(source_path, content, append)` — per-file memory.
-- `list_languages()` — installed extensions (builtin `rs`, `py`; drop a WASM module for more).
+- `split(source_path)` / `dry_run_split(source_path)` — split one file / preview its chunk boundaries.
+- `diff_body(path)` — diff a body against the function's current region in the source.
+- `body_stats(path)` — loc, bytes, refs in, mtime, origin source for one body.
+- `validate(fix)` — index integrity check; `fix=true` purges orphans, dead refs, stale entries.
+- `list_languages()` — installed extensions (17 builtin languages; drop a WASM module for more).
 
 ## Use instead of
 

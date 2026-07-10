@@ -71,18 +71,26 @@ Stage an `ORACLE.md` change with no new "Decided by:" entry; attempt a commit. M
 
 ## What we are building
 
-_Undecided. First act: ask the user what we are building — who it serves, what "good" means, what it refuses to be. Answer lands here as one paragraph; the decision is recorded under "Changelog"._
+splinter serves coding agents working in large codebases: an MCP server that indexes source at the function level so an agent loads one function instead of a whole file, plus durable per-file memory that survives sessions. Good means token-cheap navigation that never lies about the source — source is truth, the index is a disposable derived cache. It refuses to be an editor, a language server, or a second copy of the code that can drift.
 
 ## Features
 
-_Empty. Entries land when work on a feature starts, in the same change._
+- **Fn-level index** — splits source into a skeleton + per-function `.fs` bodies under `.splinter/`, navigated by 19 MCP tools. active
+- **One-way watcher** — source change re-splits the index; the index never writes back. active
+- **Per-file memory** — durable `*.splinter.md` notes that survive re-splits. active
+- **Language modules** — 17 builtin languages as embedded WASM; project/user modules override builtins. active
+- **Plugin distribution** — Claude Code plugin downloads prebuilt binaries; a SessionStart hook makes agents index-first. active
+- **Auto release** — pre-push version bump in lockstep; release workflow publishes binaries for every version. active
 
 ## Roadmap
 
-_Empty. Entries land as the oracle surfaces avoided questions._
+- Do four search tools (`search_bodies`, `grep_source`, `grep_files`, `search_names`) earn their keep, or does one subsume the rest? Blocker: usage data on what agents actually call. Deciding principle: "Delete what is superseded".
+- Should the tool tables in README and SKILL.md be generated from `tools.rs` so they cannot drift? Blocker: none. Deciding principle: "Enforced, not remembered".
 
 ## Changelog
 
+- 2026-07-10 — Vision recorded, drawn from the README's own claims; amend freely if it misses who this serves or what it refuses to be. Decided by: "Philosophy before answers". Supersedes: the undecided slot.
+- 2026-07-10 — Docs must state the real surface: SKILL.md and README synced to the 19 tools and 17 builtin languages; the builtin language list collapsed to one table in code (was five hand-kept copies across `language.rs` and `build.rs`). Decided by: "Delete what is superseded". Supersedes: partial tool lists and the `rs`/`py`-era language claims.
 - 2026-07-10 — Adopted the oracle as this repository's operating instruction; ruling enforced at the commit, install products kept out of history. Decided by: "Enforced, not remembered" and "Portable before proprietary". Supersedes: process-by-convention (nothing was enforced at the commit).
 
 ## Specialists
