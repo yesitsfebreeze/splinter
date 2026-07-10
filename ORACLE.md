@@ -91,6 +91,7 @@ splinter serves coding agents working in large codebases: an MCP server that ind
 
 ## Changelog
 
+- 2026-07-10 — Language-module wasm plumbing single-sourced in `languages/common`: shared structs, buffers, and exports behind a `language_module!` macro, so a module is its comment marker plus one splitter fn. Kills 17 hand-kept ~70-line copies and the `static mut` output buffer; CI now holds every language crate to fmt + clippy `-D warnings`. Decided by: "Delete what is superseded" and "Enforced, not remembered". Supersedes: copy-pasted plumbing per crate.
 - 2026-07-10 — CI runs every language module's test suite and caches all `languages/*/target` dirs by glob. Decided by: "Enforced, not remembered". Supersedes: main-crate-only CI (293 language tests existed and never ran anywhere) and the `rs`/`py`-era cache list.
 - 2026-07-10 — The `py` splitter is string-aware: a per-line inside-string map keeps docstring text out of line scanning. Found by the first `rs`/`py` test suites (17 + 16 tests) — module-level docstrings indexed phantom defs, and dedented string content truncated body extents. Decided by: "Fix bugs on sight". Supersedes: indentation-only scanning.
 - 2026-07-10 — The repo dogfoods its own index: `.splinter/` bootstrapped and the server wired into local MCP config. Decided by: the vision — a tool not good enough to navigate its own repo fails its own definition of good. Supersedes: navigating this repo with raw reads.

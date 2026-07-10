@@ -6,10 +6,16 @@ fn main() {
     // lets the discovery below pick up the new languages/<lang> dir
     println!("cargo:rerun-if-changed=src/language.rs");
 
+    println!("cargo:rerun-if-changed=languages/common/src");
+    println!("cargo:rerun-if-changed=languages/common/Cargo.toml");
+
+    // language modules are the cdylib crates; languages/common is shared plumbing
     let mut langs: Vec<String> = std::fs::read_dir("languages")
         .expect("languages/ directory missing")
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().join("Cargo.toml").exists())
+        .filter(|e| {
+            std::fs::read_to_string(e.path().join("Cargo.toml")).is_ok_and(|t| t.contains("cdylib"))
+        })
         .filter_map(|e| e.file_name().into_string().ok())
         .collect();
     langs.sort();

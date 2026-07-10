@@ -76,11 +76,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "split-language-cs"
+name = "split-language-common"
 version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "split-language-cs"
+version = "0.1.0"
+dependencies = [
+ "split-language-common",
 ]
 
 [[package]]

@@ -1,84 +1,7 @@
-use std::alloc::{alloc, dealloc, Layout};
+use split_language_common::{language_module, Body, Output};
 use std::path::Path;
 
-#[derive(serde::Deserialize)]
-struct Input {
-    source: String,
-    source_path: String,
-    #[serde(alias = "split_dir", alias = "index_dir")]
-    index_dir: String,
-}
-
-static META_JSON: &[u8] = b"{\"comment\":\"<!--\"}";
-
-#[no_mangle]
-pub extern "C" fn language_meta_ptr() -> i32 {
-    META_JSON.as_ptr() as i32
-}
-
-#[no_mangle]
-pub extern "C" fn language_meta_len() -> i32 {
-    META_JSON.len() as i32
-}
-
-#[derive(serde::Serialize)]
-struct Output {
-    skeleton: String,
-    bodies: Vec<Body>,
-}
-
-#[derive(serde::Serialize)]
-struct Body {
-    path: String,
-    name: String,
-    signature: String,
-    raw: String,
-    line_start: usize,
-    line_end: usize,
-}
-
-static mut OUT: Vec<u8> = Vec::new();
-
-#[no_mangle]
-pub extern "C" fn wasm_alloc(size: i32) -> i32 {
-    unsafe {
-        let layout = Layout::from_size_align(size as usize, 1).unwrap();
-        alloc(layout) as i32
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn wasm_dealloc(ptr: i32, size: i32) {
-    unsafe {
-        let layout = Layout::from_size_align(size as usize, 1).unwrap();
-        dealloc(ptr as *mut u8, layout);
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn language_split(ptr: i32, len: i32) -> i32 {
-    let input = unsafe { std::slice::from_raw_parts(ptr as *const u8, len as usize) };
-    let result = do_split(input);
-    unsafe {
-        OUT = result;
-        OUT.len() as i32
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn language_result_ptr() -> i32 {
-    unsafe { OUT.as_ptr() as i32 }
-}
-
-fn do_split(input: &[u8]) -> Vec<u8> {
-    let Ok(inp) = serde_json::from_slice::<Input>(input) else {
-        return b"{}".to_vec();
-    };
-    let source_path = Path::new(&inp.source_path);
-    let index_dir = Path::new(&inp.index_dir);
-    let out = split_html(&inp.source, source_path, index_dir);
-    serde_json::to_vec(&out).unwrap_or_default()
-}
+language_module!(comment = "<!--", split = split_html);
 
 fn split_html(source: &str, source_path: &Path, index_dir: &Path) -> Output {
     let src_display = to_slash(source_path);
@@ -255,10 +178,22 @@ fn parse_open_tag(bytes: &[u8], lt: usize) -> Option<OpenTag> {
             return None;
         }
         match bytes[i] {
-            b'>' => return Some(OpenTag { name, id, open_gt: i, self_close }),
+            b'>' => {
+                return Some(OpenTag {
+                    name,
+                    id,
+                    open_gt: i,
+                    self_close,
+                })
+            }
             b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'>' => {
                 self_close = true;
-                return Some(OpenTag { name, id, open_gt: i + 1, self_close });
+                return Some(OpenTag {
+                    name,
+                    id,
+                    open_gt: i + 1,
+                    self_close,
+                });
             }
             b'/' => {
                 i += 1;
@@ -369,7 +304,11 @@ fn depth_find_close(bytes: &[u8], start: usize, tag: &str) -> Option<usize> {
 fn raw_find_close(bytes: &[u8], start: usize, tag: &str) -> Option<usize> {
     let mut i = start;
     while i < bytes.len() {
-        if bytes[i] == b'<' && i + 1 < bytes.len() && bytes[i + 1] == b'/' && closing_tag_matches(bytes, i, tag) {
+        if bytes[i] == b'<'
+            && i + 1 < bytes.len()
+            && bytes[i + 1] == b'/'
+            && closing_tag_matches(bytes, i, tag)
+        {
             return Some(i);
         }
         i += 1;
@@ -541,7 +480,8 @@ mod tests {
 
     #[test]
     fn script_raw_text_is_not_parsed() {
-        let src = "<script id=\"s\">\nif (a < b) { x = \"</div>\"; }\n</script>\n<div id=\"d\">y</div>\n";
+        let src =
+            "<script id=\"s\">\nif (a < b) { x = \"</div>\"; }\n</script>\n<div id=\"d\">y</div>\n";
         assert_eq!(names(src), vec!["s", "d"]);
     }
 

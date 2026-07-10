@@ -48,3 +48,10 @@ jobs:
           for d in languages/*/; do
             cargo test --manifest-path "${d}Cargo.toml"
           done
+
+      - name: Lint language modules
+        run: |
+          for d in languages/*/; do
+            cargo fmt --manifest-path "${d}Cargo.toml" -- --check
+            cargo clippy --manifest-path "${d}Cargo.toml" --all-targets -- -D warnings
+          done

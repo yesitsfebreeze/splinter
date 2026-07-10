@@ -7,8 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+split-language-common = { path = "../common" }
 
 [profile.release]
 opt-level = "s"

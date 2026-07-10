@@ -1,83 +1,7 @@
-use std::alloc::{alloc, dealloc, Layout};
+use split_language_common::{language_module, Body, Output};
 use std::path::Path;
 
-#[derive(serde::Deserialize)]
-struct Input {
-    source: String,
-    source_path: String,
-    #[serde(alias = "split_dir", alias = "index_dir")]
-    index_dir: String,
-}
-
-#[derive(serde::Serialize)]
-struct Output {
-    skeleton: String,
-    bodies: Vec<Body>,
-}
-
-#[derive(serde::Serialize)]
-struct Body {
-    path: String,
-    name: String,
-    signature: String,
-    raw: String,
-    line_start: usize,
-    line_end: usize,
-}
-
-static META_JSON: &[u8] = b"{\"comment\":\"#\"}";
-static mut OUT: Vec<u8> = Vec::new();
-
-#[no_mangle]
-pub extern "C" fn wasm_alloc(size: i32) -> i32 {
-    unsafe {
-        let layout = Layout::from_size_align(size as usize, 1).unwrap();
-        alloc(layout) as i32
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn wasm_dealloc(ptr: i32, size: i32) {
-    unsafe {
-        let layout = Layout::from_size_align(size as usize, 1).unwrap();
-        dealloc(ptr as *mut u8, layout);
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn language_meta_ptr() -> i32 {
-    META_JSON.as_ptr() as i32
-}
-
-#[no_mangle]
-pub extern "C" fn language_meta_len() -> i32 {
-    META_JSON.len() as i32
-}
-
-#[no_mangle]
-pub extern "C" fn language_split(ptr: i32, len: i32) -> i32 {
-    let input = unsafe { std::slice::from_raw_parts(ptr as *const u8, len as usize) };
-    let result = do_split(input);
-    unsafe {
-        OUT = result;
-        OUT.len() as i32
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn language_result_ptr() -> i32 {
-    unsafe { OUT.as_ptr() as i32 }
-}
-
-fn do_split(input: &[u8]) -> Vec<u8> {
-    let Ok(inp) = serde_json::from_slice::<Input>(input) else {
-        return b"{\"skeleton\":\"\",\"bodies\":[]}".to_vec();
-    };
-    let source_path = Path::new(&inp.source_path);
-    let index_dir = Path::new(&inp.index_dir);
-    let out = split_rb(&inp.source, source_path, index_dir);
-    serde_json::to_vec(&out).unwrap_or_default()
-}
+language_module!(comment = "#", split = split_rb);
 
 fn split_rb(source: &str, source_path: &Path, index_dir: &Path) -> Output {
     let src_display = to_slash(source_path);
@@ -355,7 +279,8 @@ fn find_defs(source: &str) -> Vec<DefLoc> {
                 b"class" | b"module" => {
                     if in_def {
                         stack.push(Frame::Anon);
-                    } else if let Some(name) = parse_container_name(bytes, we, line_end_at(bytes, we))
+                    } else if let Some(name) =
+                        parse_container_name(bytes, we, line_end_at(bytes, we))
                     {
                         stack.push(Frame::Container(name));
                     } else {
@@ -380,10 +305,8 @@ fn find_defs(source: &str) -> Vec<DefLoc> {
                     }
                 }
                 b"end" => {
-                    if let Some(frame) = stack.pop() {
-                        if let Frame::Def(pd) = frame {
-                            finalize_def(source, bytes, &line_starts, pd, start_i, &mut result);
-                        }
+                    if let Some(Frame::Def(pd)) = stack.pop() {
+                        finalize_def(source, bytes, &line_starts, pd, start_i, &mut result);
                     }
                 }
                 _ => {}
@@ -445,8 +368,7 @@ fn finalize_def(
         let body_end = line_starts[end_line_idx];
 
         let mut body_indent = def_indent + 2;
-        for idx in (def_line_idx + 1)..end_line_idx {
-            let ls = line_starts[idx];
+        for &ls in &line_starts[(def_line_idx + 1)..end_line_idx] {
             let le = line_end_at(bytes, ls);
             let (ind, cs) = leading_indent(bytes, ls, le);
             if cs < le && bytes[cs] != b'#' {
@@ -878,7 +800,10 @@ mod tests {
     fn body_is_interior_only() {
         let src = "def f\n  x = 1\n  x\nend\n";
         let f = &find_defs(src)[0];
-        assert_eq!(strip_body_edges(&src[f.body_start..f.body_end]), "  x = 1\n  x");
+        assert_eq!(
+            strip_body_edges(&src[f.body_start..f.body_end]),
+            "  x = 1\n  x"
+        );
         assert_eq!(f.signature, "def f");
         assert_eq!(f.line_start, 1);
         assert_eq!(f.line_end, 4);
@@ -1054,10 +979,7 @@ class V
   end
 end
 ";
-        assert_eq!(
-            names(src),
-            vec!["V.+", "V.<=>", "V.[]", "V.[]="]
-        );
+        assert_eq!(names(src), vec!["V.+", "V.<=>", "V.[]", "V.[]="]);
     }
 
     #[test]
