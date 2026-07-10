@@ -1,6 +1,6 @@
 [package]
 name = "splinter"
-version = "0.1.15"
+version = "0.1.16"
 edition = "2021"
 description = "MCP server: fn-level code index with per-file splinter memory"
 
