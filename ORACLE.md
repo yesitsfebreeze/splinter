@@ -86,9 +86,14 @@ splinter serves coding agents working in large codebases: an MCP server that ind
 
 - Do four search tools (`search_bodies`, `grep_source`, `grep_files`, `search_names`) earn their keep, or does one subsume the rest? Blocker: usage data on what agents actually call. Deciding principle: "Delete what is superseded".
 - Should the tool tables in README and SKILL.md be generated from `tools.rs` so they cannot drift? Blocker: none. Deciding principle: "Enforced, not remembered".
+- Does CHANGELOG.md survive? Auto-release ships every master push while "Unreleased" never graduates, so the two version records disagree. Blocker: pick the single record — release.yml stamps the changelog, or release notes replace it. Deciding principle: "Delete what is superseded".
+- Is splinter per-language or per-repo? `SPLINTER_EXT` watches one extension while 17 languages ship builtin; real codebases are polyglot. Blocker: none. Deciding principle: the vision ("serves coding agents working in large codebases").
 
 ## Changelog
 
+- 2026-07-10 — CI runs every language module's test suite and caches all `languages/*/target` dirs by glob. Decided by: "Enforced, not remembered". Supersedes: main-crate-only CI (293 language tests existed and never ran anywhere) and the `rs`/`py`-era cache list.
+- 2026-07-10 — The `py` splitter is string-aware: a per-line inside-string map keeps docstring text out of line scanning. Found by the first `rs`/`py` test suites (17 + 16 tests) — module-level docstrings indexed phantom defs, and dedented string content truncated body extents. Decided by: "Fix bugs on sight". Supersedes: indentation-only scanning.
+- 2026-07-10 — The repo dogfoods its own index: `.splinter/` bootstrapped and the server wired into local MCP config. Decided by: the vision — a tool not good enough to navigate its own repo fails its own definition of good. Supersedes: navigating this repo with raw reads.
 - 2026-07-10 — Vision recorded, drawn from the README's own claims; amend freely if it misses who this serves or what it refuses to be. Decided by: "Philosophy before answers". Supersedes: the undecided slot.
 - 2026-07-10 — Docs must state the real surface: SKILL.md and README synced to the 19 tools and 17 builtin languages; the builtin language list collapsed to one table in code (was five hand-kept copies across `language.rs` and `build.rs`). Decided by: "Delete what is superseded". Supersedes: partial tool lists and the `rs`/`py`-era language claims.
 - 2026-07-10 — Adopted the oracle as this repository's operating instruction; ruling enforced at the commit, install products kept out of history. Decided by: "Enforced, not remembered" and "Portable before proprietary". Supersedes: process-by-convention (nothing was enforced at the commit).

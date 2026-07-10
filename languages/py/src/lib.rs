@@ -1,5 +1,5 @@
 use std::alloc::{alloc, dealloc, Layout};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(serde::Deserialize)]
 struct Input {
@@ -120,7 +120,10 @@ fn line_of(line_starts: &[usize], byte_offset: usize) -> usize {
 }
 
 fn strip_body_edges(s: &str) -> String {
-    let s = s.strip_prefix("\r\n").or_else(|| s.strip_prefix('\n')).unwrap_or(s);
+    let s = s
+        .strip_prefix("\r\n")
+        .or_else(|| s.strip_prefix('\n'))
+        .unwrap_or(s);
     s.trim_end().to_string()
 }
 
@@ -148,11 +151,16 @@ struct Scope {
 fn find_defs(source: &str) -> Vec<DefLoc> {
     let bytes = source.as_bytes();
     let line_starts = compute_line_starts(bytes);
+    let in_str = lines_inside_string(bytes, &line_starts);
     let mut result = Vec::new();
     let mut scopes: Vec<Scope> = Vec::new();
     let mut i = 0usize;
 
     while i < line_starts.len() {
+        if in_str[i] {
+            i += 1;
+            continue;
+        }
         let line_start = line_starts[i];
         let line_end = line_end_at(bytes, line_start);
         let (indent, content_start) = leading_indent(bytes, line_start, line_end);
@@ -181,7 +189,7 @@ fn find_defs(source: &str) -> Vec<DefLoc> {
             };
 
             let (body_end, body_indent, lines_consumed) =
-                find_body_extent(bytes, &line_starts, body_block_start, indent);
+                find_body_extent(bytes, &line_starts, &in_str, body_block_start, indent);
 
             let nested_in_def = scopes.iter().any(|s| s.is_def);
 
@@ -243,7 +251,8 @@ struct Parsed {
 
 fn parse_def_or_class(bytes: &[u8], start: usize, line_end: usize) -> Option<Parsed> {
     let slice = &bytes[start..line_end];
-    let (kw_len, is_def) = if slice.starts_with(b"async def ") || slice.starts_with(b"async\tdef ") {
+    let (kw_len, is_def) = if slice.starts_with(b"async def ") || slice.starts_with(b"async\tdef ")
+    {
         (10, true)
     } else if slice.starts_with(b"def ") {
         (4, true)
@@ -324,10 +333,13 @@ fn skip_string(bytes: &[u8], start: usize) -> Option<usize> {
     let is_raw = bytes[i..prefix_end]
         .iter()
         .any(|c| matches!(c, b'r' | b'R'));
-    let triple = prefix_end + 2 < bytes.len()
-        && bytes[prefix_end + 1] == q
-        && bytes[prefix_end + 2] == q;
-    let mut j = if triple { prefix_end + 3 } else { prefix_end + 1 };
+    let triple =
+        prefix_end + 2 < bytes.len() && bytes[prefix_end + 1] == q && bytes[prefix_end + 2] == q;
+    let mut j = if triple {
+        prefix_end + 3
+    } else {
+        prefix_end + 1
+    };
     if triple {
         while j + 2 < bytes.len() {
             if bytes[j] == q && bytes[j + 1] == q && bytes[j + 2] == q {
@@ -362,6 +374,7 @@ fn skip_string(bytes: &[u8], start: usize) -> Option<usize> {
 fn find_body_extent(
     bytes: &[u8],
     line_starts: &[usize],
+    in_str: &[bool],
     body_block_start: usize,
     def_indent: usize,
 ) -> (usize, usize, usize) {
@@ -373,6 +386,13 @@ fn find_body_extent(
     while idx < line_starts.len() {
         let ls = line_starts[idx];
         let le = line_end_at(bytes, ls);
+        if in_str[idx] {
+            if body_indent_opt.is_some() {
+                last_content_end = le;
+            }
+            idx += 1;
+            continue;
+        }
         let (indent, content_start) = leading_indent(bytes, ls, le);
         let blank_or_comment = content_start >= le || bytes[content_start] == b'#';
 
@@ -398,6 +418,44 @@ fn find_body_extent(
     let body_indent = body_indent_opt.unwrap_or(def_indent + 4);
     let lines_consumed = idx - start_line_idx;
     (last_content_end, body_indent, lines_consumed.max(1))
+}
+
+/// For each line, whether its first byte falls inside a string literal, so the
+/// line-based scanners never mistake code-shaped docstring text for code.
+fn lines_inside_string(bytes: &[u8], line_starts: &[usize]) -> Vec<bool> {
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'#' => {
+                i = line_end_at(bytes, i);
+            }
+            b'"' | b'\'' | b'r' | b'R' | b'b' | b'B' | b'f' | b'F' | b'u' | b'U' => {
+                let mid_ident = i > 0 && is_ident_char(bytes[i - 1]);
+                if !mid_ident {
+                    if let Some(end) = skip_string(bytes, i) {
+                        spans.push((i, end));
+                        i = end;
+                        continue;
+                    }
+                }
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+
+    let mut v = vec![false; line_starts.len()];
+    let mut si = 0;
+    for (idx, &ls) in line_starts.iter().enumerate() {
+        while si < spans.len() && spans[si].1 <= ls {
+            si += 1;
+        }
+        if si < spans.len() && spans[si].0 < ls {
+            v[idx] = true;
+        }
+    }
+    v
 }
 
 fn compute_line_starts(bytes: &[u8]) -> Vec<usize> {
@@ -471,4 +529,143 @@ fn ident_end(bytes: &[u8], start: usize) -> usize {
         i += 1;
     }
     i
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names(src: &str) -> Vec<String> {
+        find_defs(src).into_iter().map(|d| d.name).collect()
+    }
+
+    #[test]
+    fn basic_def() {
+        let src = "def greet(name):\n    return name\n";
+        assert_eq!(names(src), vec!["greet"]);
+    }
+
+    #[test]
+    fn async_def() {
+        let src = "async def fetch(url):\n    return url\n";
+        assert_eq!(names(src), vec!["fetch"]);
+    }
+
+    #[test]
+    fn method_is_qualified_by_class() {
+        let src = "class Greeter:\n    def greet(self):\n        return 1\n";
+        assert_eq!(names(src), vec!["Greeter.greet"]);
+    }
+
+    #[test]
+    fn nested_class_builds_dotted_path() {
+        let src = "\
+class Outer:
+    class Inner:
+        def m(self):
+            return 1
+";
+        assert_eq!(names(src), vec!["Outer.Inner.m"]);
+    }
+
+    #[test]
+    fn same_method_on_two_classes_does_not_collide() {
+        let src = "\
+class A:
+    def run(self):
+        return 1
+
+class B:
+    def run(self):
+        return 2
+";
+        assert_eq!(names(src), vec!["A.run", "B.run"]);
+    }
+
+    #[test]
+    fn inner_def_is_absorbed_into_outer() {
+        let src = "\
+def outer():
+    def inner():
+        return 1
+    return inner
+";
+        assert_eq!(names(src), vec!["outer"]);
+    }
+
+    #[test]
+    fn class_without_methods_emits_nothing() {
+        let src = "class Empty:\n    x = 1\n";
+        assert_eq!(names(src), Vec::<String>::new());
+    }
+
+    #[test]
+    fn commented_def_is_ignored() {
+        let src = "# def fake():\ndef real():\n    return 1\n";
+        assert_eq!(names(src), vec!["real"]);
+    }
+
+    #[test]
+    fn def_without_indented_body_is_skipped() {
+        let src = "def f():\nx = 1\n";
+        assert_eq!(names(src), Vec::<String>::new());
+    }
+
+    #[test]
+    fn multiline_signature() {
+        let src = "\
+def g(
+    a,
+    b,
+):
+    return a + b
+";
+        let d = &find_defs(src)[0];
+        assert_eq!(d.name, "g");
+        assert_eq!(d.signature, "def g( a, b, )");
+    }
+
+    #[test]
+    fn signature_stops_before_colon() {
+        let src = "def h(a, b) -> int:\n    return a + b\n";
+        assert_eq!(find_defs(src)[0].signature, "def h(a, b) -> int");
+    }
+
+    #[test]
+    fn colon_in_default_dict_does_not_end_signature() {
+        let src = "def f(d={'k': 1}):\n    return d\n";
+        let d = &find_defs(src)[0];
+        assert_eq!(d.name, "f");
+        assert_eq!(d.signature, "def f(d={'k': 1})");
+    }
+
+    #[test]
+    fn line_numbers_are_one_based_def_to_last_body_line() {
+        let src = "def f():\n    a = 1\n    return a\n";
+        let d = &find_defs(src)[0];
+        assert_eq!((d.line_start, d.line_end), (1, 3));
+    }
+
+    #[test]
+    fn def_inside_module_level_string_is_ignored() {
+        let src = "x = \"\"\"\ndef fake():\n    pass\n\"\"\"\n\ndef real():\n    return 1\n";
+        assert_eq!(names(src), vec!["real"]);
+    }
+
+    #[test]
+    fn dedented_string_content_stays_in_body() {
+        let src = "def f():\n    s = \"\"\"\nraw line at column 0\n\"\"\"\n    return s\n";
+        let d = &find_defs(src)[0];
+        assert!(src[d.body_start..d.body_end].contains("return s"));
+    }
+
+    #[test]
+    fn body_spans_only_indented_block() {
+        let src = "def f():\n    return 1\n\ntop = 2\n";
+        let d = &find_defs(src)[0];
+        assert_eq!(
+            strip_body_edges(&src[d.body_start..d.body_end]),
+            "    return 1"
+        );
+    }
 }

@@ -1,5 +1,5 @@
 use std::alloc::{alloc, dealloc, Layout};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(serde::Deserialize)]
 struct Input {
@@ -445,4 +445,152 @@ fn ident_end(bytes: &[u8], start: usize) -> usize {
         i += 1;
     }
     i
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names(src: &str) -> Vec<String> {
+        find_fns(src).into_iter().map(|f| f.name).collect()
+    }
+
+    #[test]
+    fn basic_fn() {
+        let src = "fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n";
+        assert_eq!(names(src), vec!["add"]);
+    }
+
+    #[test]
+    fn body_is_interior_only() {
+        let src = "fn f() {\n    let x = 1;\n}\n";
+        let f = &find_fns(src)[0];
+        assert_eq!(
+            strip_body_edges(&src[f.body_start..f.body_end]),
+            "    let x = 1;"
+        );
+    }
+
+    #[test]
+    fn impl_method_is_qualified() {
+        let src = "impl Point {\n    fn dist(&self) -> f64 {\n        0.0\n    }\n}\n";
+        assert_eq!(names(src), vec!["Point.dist"]);
+    }
+
+    #[test]
+    fn trait_impl_qualifies_with_type_not_trait() {
+        let src = "impl Display for Point {\n    fn fmt(&self, f: &mut Formatter) -> Result {\n        Ok(())\n    }\n}\n";
+        assert_eq!(names(src), vec!["Point.fmt"]);
+    }
+
+    #[test]
+    fn generic_impl_and_path_qualified_type() {
+        let src = "\
+impl<T> Stack<T> {
+    fn push(&mut self, x: T) {
+        self.data.push(x);
+    }
+}
+impl fmt::Display for Wide {
+    fn fmt(&self) {
+    }
+}
+";
+        assert_eq!(names(src), vec!["Stack.push", "Wide.fmt"]);
+    }
+
+    #[test]
+    fn same_method_on_two_impls_does_not_collide() {
+        let src = "\
+impl A {
+    fn new() -> Self {
+        A
+    }
+}
+impl B {
+    fn new() -> Self {
+        B
+    }
+}
+";
+        assert_eq!(names(src), vec!["A.new", "B.new"]);
+    }
+
+    #[test]
+    fn trait_declaration_without_body_is_skipped() {
+        let src = "trait T {\n    fn f(&self);\n    fn g(&self) {\n    }\n}\n";
+        assert_eq!(names(src), vec!["g"]);
+    }
+
+    #[test]
+    fn fn_in_comments_is_ignored() {
+        let src = "// fn fake() {}\n/* fn also_fake() {} */\nfn real() {\n}\n";
+        assert_eq!(names(src), vec!["real"]);
+    }
+
+    #[test]
+    fn fn_in_string_is_ignored() {
+        let src = "fn real() {\n    let s = \"fn fake() {}\";\n}\n";
+        assert_eq!(names(src), vec!["real"]);
+    }
+
+    #[test]
+    fn fn_in_raw_string_is_ignored() {
+        let src = "fn real() {\n    let s = r#\"fn fake() {}\"#;\n}\n";
+        assert_eq!(names(src), vec!["real"]);
+    }
+
+    #[test]
+    fn brace_in_string_does_not_break_matching() {
+        let src = "fn f() {\n    let a = \"}\";\n}\nfn g() {\n}\n";
+        assert_eq!(names(src), vec!["f", "g"]);
+    }
+
+    #[test]
+    fn brace_in_char_literal_does_not_break_matching() {
+        let src = "fn f() {\n    let b = '{';\n}\nfn g() {\n}\n";
+        assert_eq!(names(src), vec!["f", "g"]);
+    }
+
+    #[test]
+    fn escaped_char_literal_does_not_break_matching() {
+        let src = "fn f() {\n    let c = '\\\\';\n    let d = '\\'';\n}\nfn g() {\n}\n";
+        assert_eq!(names(src), vec!["f", "g"]);
+    }
+
+    #[test]
+    fn mixed_literals_do_not_break_matching() {
+        let src =
+            "fn f() {\n    let a = \"}\";\n    let b = '{';\n    let c = '\\\\';\n}\nfn g() {\n}\n";
+        assert_eq!(names(src), vec!["f", "g"]);
+    }
+
+    #[test]
+    fn nested_fn_is_absorbed_into_outer() {
+        let src = "fn outer() {\n    fn inner() {\n    }\n    inner();\n}\n";
+        assert_eq!(names(src), vec!["outer"]);
+    }
+
+    #[test]
+    fn multiline_params() {
+        let src = "\
+fn g(
+    a: i32,
+    b: i32,
+) -> (i32, i32) {
+    (a, b)
+}
+";
+        assert_eq!(names(src), vec!["g"]);
+    }
+
+    #[test]
+    fn signature_keeps_modifiers_and_collapses_whitespace() {
+        let src = "pub async fn fetch(\n    url: &str,\n) -> Result<()> {\n    Ok(())\n}\n";
+        let f = &find_fns(src)[0];
+        assert_eq!(
+            signature_of(src, f.decl_start, f.body_start - 1),
+            "pub async fn fetch( url: &str, ) -> Result<()>"
+        );
+    }
 }

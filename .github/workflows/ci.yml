@@ -27,8 +27,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-            languages/rs/target
-            languages/py/target
+            languages/*/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
@@ -43,3 +42,9 @@ jobs:
 
       - name: Test
         run: cargo test --locked
+
+      - name: Test language modules
+        run: |
+          for d in languages/*/; do
+            cargo test --manifest-path "${d}Cargo.toml"
+          done
