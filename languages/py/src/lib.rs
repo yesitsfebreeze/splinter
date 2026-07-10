@@ -222,12 +222,8 @@ fn find_signature_colon(bytes: &[u8], from: usize) -> Option<usize> {
             b')' | b']' | b'}' => paren -= 1,
             b':' if paren == 0 => return Some(i + 1),
             b'"' | b'\'' => {
-                if let Some(j) = skip_string(bytes, i) {
-                    i = j;
-                    continue;
-                } else {
-                    return None;
-                }
+                i = skip_string(bytes, i)?;
+                continue;
             }
             _ => {}
         }
