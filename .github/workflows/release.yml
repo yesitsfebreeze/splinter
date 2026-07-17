@@ -36,8 +36,12 @@ jobs:
             echo "release=false" >> "$GITHUB_OUTPUT"
             echo "v$ver already released — nothing to do."
           else
+            # Create the release here, once — concurrent matrix jobs creating it
+            # raced and split the assets across duplicate releases.
+            gh release create "v$ver" --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "v$ver" --generate-notes
             echo "release=true" >> "$GITHUB_OUTPUT"
-            echo "v$ver not released — building."
+            echo "v$ver created — building."
           fi
 
   build:
@@ -94,8 +98,7 @@ jobs:
         run: Compress-Archive -Path target/${{ matrix.target }}/release/splinter.exe -DestinationPath ${{ matrix.asset }}.zip
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ needs.prepare.outputs.version }}
-          files: ${{ matrix.asset }}.*
-          fail_on_unmatched_files: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v${{ needs.prepare.outputs.version }}" ${{ matrix.asset }}.* --repo "$GITHUB_REPOSITORY" --clobber
