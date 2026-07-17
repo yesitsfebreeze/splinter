@@ -39,10 +39,16 @@ if lock_new == lock:
     fail("could not find splinter package in Cargo.lock")
 lock_path.write_text(lock_new)
 
-# JSON manifests — anchored on the old version string (only plugin versions match).
+# JSON manifests — every version field is set to the new version outright, so a
+# manifest that drifted behind Cargo.toml self-heals instead of silently staying
+# stale (0.1.13-0.1.16 shipped no release because of exactly that).
 # The launcher carries no version of its own; it reads plugin.json at runtime.
+version_field = re.compile(r'"version":\s*"\d+\.\d+\.\d+"')
 for rel in (".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"):
     p = root / rel
-    p.write_text(p.read_text().replace(f'"version": "{old}"', f'"version": "{new}"'))
+    text = version_field.sub(f'"version": "{new}"', p.read_text())
+    if f'"version": "{new}"' not in text:
+        fail(f"no version field found in {rel}")
+    p.write_text(text)
 
 print(new)
