@@ -38,11 +38,11 @@ pub fn list() -> Value {
         },
         {
             "name": "read_body",
-            "description": "Read body file. Optional range for paginating large bodies.",
+            "description": "Read one function body (.fs file). Optional range for paginating large bodies. Source files are rejected — use open_source for those.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "path":  { "type": "string" },
+                    "path":  { "type": "string", "description": ".fs body path, absolute, repo-relative, or index-relative" },
                     "start": { "type": "number", "description": "1-based start line (default: 1)" },
                     "limit": { "type": "number", "description": "Max lines to return (default: all)" }
                 },
@@ -56,19 +56,18 @@ pub fn list() -> Value {
                 "type": "object",
                 "properties": {
                     "src_dir": { "type": "string", "description": "Root source directory to walk" },
-                    "ext":     { "type": "string", "description": "File extension to index (default: rs)" }
+                    "ext":     { "type": "string", "description": "Restrict to a comma-separated extension list (default: every installed language)" }
                 },
                 "required": ["src_dir"]
             }
         },
         {
             "name": "open_source",
-            "description": "Open a source file via the index: auto-splits on first access, returns function list sorted by size. Use read_body to load individual functions.",
+            "description": "Open a source file via the index: auto-splits on first access (language inferred from the file extension), returns function list sorted by size. Use read_body to load individual functions.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "source_path": { "type": "string", "description": "Path to source file" },
-                    "ext":         { "type": "string", "description": "File extension (default: rs)" }
+                    "source_path": { "type": "string", "description": "Path to source file" }
                 },
                 "required": ["source_path"]
             }
@@ -205,7 +204,7 @@ pub fn list() -> Value {
                     "query":  { "type": "string" },
                     "regex":  { "type": "boolean" },
                     "root":   { "type": "string", "description": "Root dir to walk (default: .)" },
-                    "ext":    { "type": "string", "description": "File extension (default: rs)" },
+                    "ext":    { "type": "string", "description": "Restrict to a comma-separated extension list (default: every installed language)" },
                     "cursor": { "type": "number" },
                     "limit":  { "type": "number" }
                 },
@@ -271,7 +270,7 @@ fn handle_split(args: Value) -> Result<String> {
     if let Some(p) = skel_path.parent() {
         std::fs::create_dir_all(p)?;
     }
-    let (skeleton, bodies) = splitter::split(&src, &index_dir)?;
+    let (skeleton, bodies) = splitter::split_source(&src, &index_dir)?;
     std::fs::write(&skel_path, &skeleton)?;
     let mut out = format!("skeleton: {}\n", skel_path.display());
     for b in &bodies {
@@ -377,7 +376,13 @@ fn handle_list_bodies(args: Value) -> Result<String> {
 }
 
 fn handle_read_body(args: Value) -> Result<String> {
-    let path = PathBuf::from(str_arg(&args, "path")?);
+    let raw = str_arg(&args, "path")?;
+    let path = resolve_index_path(raw);
+    if path.extension().is_none_or(|e| e != "fs") {
+        return Err(anyhow!(
+            "`{raw}` is not a .fs body — read_body loads one function body; use open_source for a source file"
+        ));
+    }
     let start = args["start"]
         .as_u64()
         .map(|n| n as usize)
@@ -404,19 +409,19 @@ fn handle_read_body(args: Value) -> Result<String> {
 fn handle_index_dir(args: Value) -> Result<String> {
     let src_dir = PathBuf::from(str_arg(&args, "src_dir")?);
     let index_dir = index_root();
-    let ext = args["ext"].as_str().unwrap_or("rs");
+    let exts = ext_filter(args["ext"].as_str());
     std::fs::create_dir_all(&index_dir)?;
     let mut files_indexed = 0u32;
     let mut files_skipped = 0u32;
     let mut bodies_total = 0u32;
-    for src in walk_files(&src_dir, ext) {
+    for src in walk_files(&src_dir, &exts) {
         splitter::ensure_splinter(&src, &index_dir).ok();
         let skel_path = splitter::skeleton_path(&src, &index_dir);
         if skel_path.exists() {
             files_skipped += 1;
             continue;
         }
-        match splitter::split_for_ext(&src, &index_dir, ext) {
+        match splitter::split_source(&src, &index_dir) {
             Ok((skeleton, bodies)) => {
                 if let Some(p) = skel_path.parent() {
                     std::fs::create_dir_all(p)?;
@@ -442,10 +447,9 @@ fn handle_index_dir(args: Value) -> Result<String> {
 fn handle_open_source(args: Value) -> Result<String> {
     let src = PathBuf::from(str_arg(&args, "source_path")?);
     let index_dir = index_root();
-    let ext = args["ext"].as_str().unwrap_or("rs");
     let skel_path = splitter::skeleton_path(&src, &index_dir);
     if !skel_path.exists() {
-        let (skeleton, bodies) = splitter::split_for_ext(&src, &index_dir, ext)?;
+        let (skeleton, bodies) = splitter::split_source(&src, &index_dir)?;
         if let Some(p) = skel_path.parent() {
             std::fs::create_dir_all(p)?;
         }
@@ -550,17 +554,8 @@ fn handle_find_large(args: Value) -> Result<String> {
     Ok(hits
         .iter()
         .map(|(loc, p)| {
-            let name = p.file_stem().unwrap_or_default().to_string_lossy();
             let rel = p.strip_prefix(&index_dir).unwrap_or(p);
-            format!(
-                "⚠ {loc:6} loc  {}",
-                rel.with_extension("")
-                    .display()
-                    .to_string()
-                    .replace('\\', "/")
-                    + "/"
-                    + &name
-            )
+            format!("⚠ {loc:6} loc  {}", splitter::to_slash(rel))
         })
         .collect::<Vec<_>>()
         .join("\n"))
@@ -569,8 +564,7 @@ fn handle_find_large(args: Value) -> Result<String> {
 fn handle_dry_run_split(args: Value) -> Result<String> {
     let src = PathBuf::from(str_arg(&args, "source_path")?);
     let index_dir = index_root();
-    let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("rs");
-    let (skeleton, bodies) = splitter::split_for_ext(&src, &index_dir, ext)?;
+    let (skeleton, bodies) = splitter::split_source(&src, &index_dir)?;
     let skel_lines = skeleton.lines().count();
     let mut out = format!(
                 "DRY RUN — no files written\nsource: {}\nskeleton: {} lines ({} bytes)\nproposed bodies ({}):\n",
@@ -587,7 +581,7 @@ fn handle_dry_run_split(args: Value) -> Result<String> {
 }
 
 fn handle_body_stats(args: Value) -> Result<String> {
-    let path = PathBuf::from(str_arg(&args, "path")?);
+    let path = resolve_index_path(str_arg(&args, "path")?);
     if !path.exists() {
         return Err(anyhow!("body file not found: {}", path.display()));
     }
@@ -640,7 +634,7 @@ fn handle_ref_graph(args: Value) -> Result<String> {
     let raw = str_arg(&args, "path")?;
     let direction = args["direction"].as_str().unwrap_or("both");
     let index_dir = index_root();
-    let path = PathBuf::from(raw);
+    let path = resolve_index_path(raw);
 
     let is_body = path.extension().is_some_and(|e| e == "fs");
     if !is_body && path.is_file() {
@@ -715,6 +709,18 @@ fn ref_graph_calls(
             .filter(|(s, _)| *s == key)
             .map(|(_, p)| p.clone())
             .collect();
+        // A bare name matching several distinct defs would merge their call
+        // graphs into one misleading answer — list the candidates instead.
+        if exact.is_empty() && defs.len() > 1 {
+            let mut out = format!(
+                "{} defs match `{key}` — pass a qualified name or .fs body path:\n",
+                defs.len()
+            );
+            for (stem, p) in &defs {
+                out.push_str(&format!("  {stem:<28}  {}\n", head_loc(p)));
+            }
+            return Ok(out.trim_end().to_string());
+        }
         let resolved = if exact.is_empty() {
             defs.into_iter().map(|(_, p)| p).collect()
         } else {
@@ -928,7 +934,7 @@ fn handle_validate(args: Value) -> Result<String> {
 }
 
 fn handle_diff_body(args: Value) -> Result<String> {
-    let path = PathBuf::from(str_arg(&args, "path")?);
+    let path = resolve_index_path(str_arg(&args, "path")?);
     if !path.exists() {
         return Err(anyhow!("body file not found: {}", path.display()));
     }
@@ -980,7 +986,7 @@ fn handle_diff_body(args: Value) -> Result<String> {
 }
 
 fn handle_outline(args: Value) -> Result<String> {
-    let path = PathBuf::from(str_arg(&args, "path")?);
+    let path = resolve_index_path(str_arg(&args, "path")?);
     let content = std::fs::read_to_string(&path)?;
     let re_kinds = ["fn", "impl", "mod", "struct", "enum", "trait"];
     let mut out = String::new();
@@ -1058,7 +1064,7 @@ fn handle_search_names(args: Value) -> Result<String> {
 fn handle_grep_files(args: Value) -> Result<String> {
     let index_dir = index_root();
     let root = PathBuf::from(args["root"].as_str().unwrap_or("."));
-    let ext = args["ext"].as_str().unwrap_or("rs");
+    let exts = ext_filter(args["ext"].as_str());
     let query = str_arg(&args, "query")?;
     let use_regex = args["regex"].as_bool().unwrap_or(false);
     let cursor = args["cursor"].as_u64().unwrap_or(0) as usize;
@@ -1066,7 +1072,7 @@ fn handle_grep_files(args: Value) -> Result<String> {
     let matcher = search::matcher(query, use_regex)?;
 
     let ranges = build_fn_ranges(&index_dir);
-    let mut paths = walk_files(&root, ext);
+    let mut paths = walk_files(&root, &exts);
     paths.sort();
 
     let results = par_flat_map(&paths, |path| {
@@ -1114,11 +1120,10 @@ fn handle_list_languages(_args: Value) -> Result<String> {
     let arr: Vec<Value> = langs
         .into_iter()
         .map(|(ext, source)| {
-            let meta = language::meta_for_ext(&ext);
             json!({
                 "ext": ext,
                 "source": source,
-                "comment": meta.comment,
+                "comment": language::comment_for_ext(&ext),
             })
         })
         .collect();
@@ -1159,6 +1164,22 @@ fn index_root() -> PathBuf {
     PathBuf::from(".splinter")
 }
 
+/// Resolve a tool-supplied index path: as given if it exists, otherwise
+/// relative to the index root — so paths returned by search_names (which strips
+/// the `.splinter/` prefix) feed straight back into body-level tools.
+fn resolve_index_path(raw: &str) -> PathBuf {
+    let path = PathBuf::from(raw);
+    if path.exists() {
+        return path;
+    }
+    let rooted = index_root().join(&path);
+    if rooted.exists() {
+        rooted
+    } else {
+        path
+    }
+}
+
 fn max_loc_threshold() -> usize {
     std::env::var("SPLINTER_MAX_LOC")
         .ok()
@@ -1178,7 +1199,18 @@ fn str_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str> {
         .ok_or_else(|| anyhow!("missing arg: {key}"))
 }
 
-fn walk_files(dir: &Path, ext: &str) -> Vec<PathBuf> {
+/// The extensions a tool call operates on: the explicit `ext` argument
+/// (comma-separated allowed) or every installed language when absent.
+fn ext_filter(arg: Option<&str>) -> BTreeSet<String> {
+    match arg {
+        Some(ext) if !ext.trim().is_empty() => {
+            ext.split(',').map(|e| e.trim().to_string()).collect()
+        }
+        _ => language::extensions(),
+    }
+}
+
+fn walk_files(dir: &Path, exts: &BTreeSet<String>) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let Ok(rd) = std::fs::read_dir(dir) else {
         return out;
@@ -1190,8 +1222,11 @@ fn walk_files(dir: &Path, ext: &str) -> Vec<PathBuf> {
             if splitter::excluded_dir_name(name) || splitter::is_git_worktree_root(&path) {
                 continue;
             }
-            out.extend(walk_files(&path, ext));
-        } else if path.extension().is_some_and(|e| e == ext)
+            out.extend(walk_files(&path, exts));
+        } else if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| exts.contains(e))
             && !path.to_string_lossy().contains(".skel.")
         {
             out.push(path);

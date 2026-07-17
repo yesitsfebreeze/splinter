@@ -32,35 +32,24 @@ pub fn wrap_body(
     )
 }
 
-/// The one-line declaration of a fn for the builtin Rust splitter: from the start
-/// of the fn's line (capturing `pub`/`async` modifiers) up to the opening brace,
-/// with interior whitespace collapsed.
-fn rust_signature(source: &str, decl_start: usize, open: usize) -> String {
-    let bytes = source.as_bytes();
-    let mut line_start = decl_start;
-    while line_start > 0 && bytes[line_start - 1] != b'\n' {
-        line_start -= 1;
-    }
-    source[line_start..open]
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-pub fn split_for_ext(
-    source_path: &Path,
-    index_dir: &Path,
-    ext: &str,
-) -> Result<(String, Vec<BodyFile>)> {
-    if let Some(wasm) = crate::language::load(ext) {
-        if let Ok(result) = crate::language::split(&wasm, ext, source_path, index_dir) {
-            return Ok(result);
+/// Split a source file with the tree-sitter grammar matching its own extension.
+/// Unknown extensions — and grammar failures (download, load, parse) — fall
+/// back to the generic whole-file splitter so indexing never hard-fails.
+pub fn split_source(source_path: &Path, index_dir: &Path) -> Result<(String, Vec<BodyFile>)> {
+    let ext = source_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    match crate::engine::split(source_path, index_dir, ext) {
+        Ok(Some(result)) => Ok(result),
+        Ok(None) => split_generic(source_path, index_dir),
+        Err(e) => {
+            eprintln!(
+                "splinter: grammar split failed for {} ({e:#}); storing whole file",
+                source_path.display()
+            );
+            split_generic(source_path, index_dir)
         }
-    }
-    if ext == "rs" {
-        split(source_path, index_dir)
-    } else {
-        split_generic(source_path, index_dir)
     }
 }
 
@@ -72,7 +61,7 @@ pub fn split_generic(source_path: &Path, index_dir: &Path) -> Result<(String, Ve
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("");
-    let comment = crate::language::meta_for_ext(ext).comment;
+    let comment = crate::language::comment_for_ext(ext).to_string();
     let src_display = to_slash(&source_key);
     let body_dir = index_dir.join(source_key.with_extension(""));
     let body_path = body_dir.join("_body.fs");
@@ -98,379 +87,6 @@ pub fn split_generic(source_path: &Path, index_dir: &Path) -> Result<(String, Ve
             content: body_content,
         }],
     ))
-}
-
-pub fn split(source_path: &Path, impl_dir: &Path) -> Result<(String, Vec<BodyFile>)> {
-    let source = std::fs::read_to_string(source_path)
-        .with_context(|| format!("read {}", source_path.display()))?;
-    let source_key = source_key_path(source_path);
-
-    let src_display = to_slash(&source_key);
-    let funcs = find_fns(&source);
-    let comment = "//";
-
-    let header = format!("// §source {src_display}\n");
-    let header_len = header.len() as i64;
-    let mut skeleton = header + &source;
-    let mut bodies = Vec::new();
-    let mut offset: i64 = header_len;
-
-    for f in funcs {
-        let raw_body = strip_body_edges(&source[f.body_start..f.body_end]);
-        let body_dir = impl_dir.join(source_key.with_extension(""));
-        let body_path = body_dir.join(format!("{}.fs", f.name));
-        let body_path_slash = to_slash(&body_path);
-
-        let line_start = line_of(&source, f.decl_start);
-        let line_end = line_of(&source, f.body_close);
-        let signature = rust_signature(&source, f.decl_start, f.body_start - 1);
-        let body_content = wrap_body(
-            comment,
-            &src_display,
-            &f.name,
-            &signature,
-            &raw_body,
-            line_start,
-            line_end,
-        );
-
-        let ref_text = format!("\n    // §{}\n", body_path_slash);
-        let a = (f.body_start as i64 + offset) as usize;
-        let b = (f.body_end as i64 + offset) as usize;
-        skeleton.replace_range(a..b, &ref_text);
-        offset += ref_text.len() as i64 - (f.body_end - f.body_start) as i64;
-
-        bodies.push(BodyFile {
-            path: body_path,
-            content: body_content,
-        });
-    }
-
-    Ok((skeleton, bodies))
-}
-
-fn line_of(source: &str, byte_offset: usize) -> usize {
-    let end = byte_offset.min(source.len());
-    source.as_bytes()[..end]
-        .iter()
-        .filter(|&&b| b == b'\n')
-        .count()
-        + 1
-}
-
-struct FnLoc {
-    name: String,
-    decl_start: usize,
-    body_start: usize,
-    body_end: usize,
-    body_close: usize,
-}
-
-fn find_fns(source: &str) -> Vec<FnLoc> {
-    let bytes = source.as_bytes();
-    let mut result = Vec::new();
-    // Stack of enclosing `impl` blocks: (closing-brace offset, type label). A fn
-    // found inside one is named `Type.fn` so methods don't collide across impls.
-    let mut scopes: Vec<(usize, String)> = Vec::new();
-    let mut i = 0;
-
-    while i < bytes.len() {
-        while scopes.last().is_some_and(|s| i >= s.0) {
-            scopes.pop();
-        }
-        // Skip line comments
-        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'/' {
-            while i < bytes.len() && bytes[i] != b'\n' {
-                i += 1;
-            }
-            continue;
-        }
-        // Skip block comments
-        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
-            }
-            i += 2;
-            continue;
-        }
-        // Skip string literals
-        if bytes[i] == b'"' {
-            i = skip_string(bytes, i + 1);
-            continue;
-        }
-        // Skip raw string literals r#"..."# or r"..."
-        if bytes[i] == b'r' && i + 1 < bytes.len() && (bytes[i + 1] == b'#' || bytes[i + 1] == b'"')
-        {
-            if let Some(j) = skip_raw_string(bytes, i) {
-                i = j;
-                continue;
-            }
-        }
-
-        // Enter an `impl` block: push its scope and descend so methods qualify.
-        if keyword(bytes, i, b"impl") {
-            if let Some((open, close, ty)) = parse_impl(source, bytes, i) {
-                scopes.push((close, ty));
-                i = open + 1;
-                continue;
-            }
-        }
-
-        // Check for `fn` keyword
-        if keyword(bytes, i, b"fn") {
-            let name_start = skip_ws(bytes, i + 2);
-            if name_start < bytes.len() && is_ident_start(bytes[name_start]) {
-                let name_end = ident_end(bytes, name_start);
-                if let Some(open) = find_open_brace(bytes, name_end) {
-                    if let Some(close) = find_close_brace(bytes, open) {
-                        let raw = String::from_utf8_lossy(&bytes[name_start..name_end]);
-                        let name = match scopes.last() {
-                            Some((_, ty)) if !ty.is_empty() => format!("{ty}.{raw}"),
-                            _ => raw.into_owned(),
-                        };
-                        result.push(FnLoc {
-                            name,
-                            decl_start: i,
-                            body_start: open + 1,
-                            body_end: close,
-                            body_close: close,
-                        });
-                        i = close + 1;
-                        continue;
-                    }
-                }
-            }
-        }
-
-        i += 1;
-    }
-
-    result
-}
-
-/// A keyword `kw` sits at `i` with identifier boundaries on both sides.
-fn keyword(bytes: &[u8], i: usize, kw: &[u8]) -> bool {
-    let n = kw.len();
-    if i + n > bytes.len() || &bytes[i..i + n] != kw {
-        return false;
-    }
-    let pre = i == 0 || !is_ident_char(bytes[i - 1]);
-    let post = i + n >= bytes.len() || !is_ident_char(bytes[i + n]);
-    pre && post
-}
-
-/// Parse an `impl` header at `i`: returns (open-brace, close-brace, type label).
-/// `impl<T> Trait for Type<T>` -> `Type`; `impl Type` -> `Type`.
-fn parse_impl(source: &str, bytes: &[u8], i: usize) -> Option<(usize, usize, String)> {
-    let mut j = skip_ws(bytes, i + 4);
-    if j < bytes.len() && bytes[j] == b'<' {
-        j = skip_angles(bytes, j);
-        j = skip_ws(bytes, j);
-    }
-    let open = find_open_brace(bytes, j)?;
-    let close = find_close_brace(bytes, open)?;
-    Some((open, close, type_label(&source[j..open])))
-}
-
-fn skip_angles(bytes: &[u8], mut i: usize) -> usize {
-    let mut depth = 0i32;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'<' => depth += 1,
-            b'>' => {
-                depth -= 1;
-                if depth == 0 {
-                    return i + 1;
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    i
-}
-
-/// Reduce an impl subject to the concrete type's base name: take the part after
-/// ` for ` when present, drop generics and path qualifiers.
-fn type_label(subject: &str) -> String {
-    subject
-        .rsplit(" for ")
-        .next()
-        .unwrap_or(subject)
-        .split(|c: char| c.is_whitespace() || c == '<')
-        .find(|t| !t.is_empty())
-        .unwrap_or("")
-        .rsplit("::")
-        .next()
-        .unwrap_or("")
-        .to_string()
-}
-
-fn find_open_brace(bytes: &[u8], from: usize) -> Option<usize> {
-    let mut i = from;
-    let mut paren = 0i32;
-    let mut angle = 0i32;
-
-    while i < bytes.len() {
-        match bytes[i] {
-            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'/' => {
-                while i < bytes.len() && bytes[i] != b'\n' {
-                    i += 1;
-                }
-            }
-            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
-                i += 2;
-                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                    i += 1;
-                }
-                i += 2;
-                continue;
-            }
-            b'(' => paren += 1,
-            b')' => paren -= 1,
-            b'<' if paren == 0 => angle += 1,
-            b'>' if paren == 0 && angle > 0 => angle -= 1,
-            b';' if paren == 0 && angle == 0 => return None, // trait fn declaration
-            b'{' if paren == 0 && angle == 0 => return Some(i),
-            _ => {}
-        }
-        i += 1;
-    }
-    None
-}
-
-fn find_close_brace(bytes: &[u8], open: usize) -> Option<usize> {
-    let mut depth = 1i32;
-    let mut i = open + 1;
-
-    while i < bytes.len() {
-        match bytes[i] {
-            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'/' => {
-                while i < bytes.len() && bytes[i] != b'\n' {
-                    i += 1;
-                }
-                continue;
-            }
-            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
-                i += 2;
-                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                    i += 1;
-                }
-                i += 2;
-                continue;
-            }
-            b'"' => {
-                i = skip_string(bytes, i + 1);
-                continue;
-            }
-            b'r' if i + 1 < bytes.len() && (bytes[i + 1] == b'#' || bytes[i + 1] == b'"') => {
-                if let Some(j) = skip_raw_string(bytes, i) {
-                    i = j;
-                    continue;
-                }
-            }
-            b'\'' if i + 2 < bytes.len() => {
-                // Char literal (not lifetime: lifetime is 'a followed by ident chars without closing ')
-                let next = bytes[i + 1];
-                if next == b'\\' {
-                    // escape sequence
-                    i += 3; // skip '\X'
-                    if i < bytes.len() && bytes[i] == b'\'' {
-                        i += 1;
-                    }
-                    continue;
-                } else if i + 2 < bytes.len() && bytes[i + 2] == b'\'' {
-                    i += 3; // skip 'X'
-                    continue;
-                }
-            }
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(i);
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    None
-}
-
-fn skip_string(bytes: &[u8], mut i: usize) -> usize {
-    while i < bytes.len() {
-        if bytes[i] == b'\\' {
-            i += 2;
-            continue;
-        }
-        if bytes[i] == b'"' {
-            return i + 1;
-        }
-        i += 1;
-    }
-    i
-}
-
-fn skip_raw_string(bytes: &[u8], start: usize) -> Option<usize> {
-    let mut i = start + 1; // skip 'r'
-    let h0 = i;
-    while i < bytes.len() && bytes[i] == b'#' {
-        i += 1;
-    }
-    let hashes = i - h0;
-    if i >= bytes.len() || bytes[i] != b'"' {
-        return None;
-    }
-    i += 1;
-    loop {
-        if i >= bytes.len() {
-            return Some(i);
-        }
-        if bytes[i] == b'"' {
-            let mut j = i + 1;
-            let mut count = 0;
-            while j < bytes.len() && bytes[j] == b'#' {
-                count += 1;
-                j += 1;
-            }
-            if count >= hashes {
-                return Some(j);
-            }
-        }
-        i += 1;
-    }
-}
-
-fn skip_ws(bytes: &[u8], mut i: usize) -> usize {
-    while i < bytes.len() && matches!(bytes[i], b' ' | b'\t' | b'\n' | b'\r') {
-        i += 1;
-    }
-    i
-}
-
-fn is_ident_char(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
-}
-fn is_ident_start(b: u8) -> bool {
-    b.is_ascii_alphabetic() || b == b'_'
-}
-
-fn ident_end(bytes: &[u8], start: usize) -> usize {
-    let mut i = start;
-    while i < bytes.len() && is_ident_char(bytes[i]) {
-        i += 1;
-    }
-    i
-}
-
-fn strip_body_edges(s: &str) -> String {
-    let s = s
-        .strip_prefix("\r\n")
-        .or_else(|| s.strip_prefix('\n'))
-        .unwrap_or(s);
-    s.trim_end().to_string()
 }
 
 pub fn to_slash(p: &Path) -> String {
@@ -714,7 +330,7 @@ mod tests {
             "use std::io;\n\nfn alpha() {\n    let _ = 1;\n}\n\npub fn beta(x: i32) -> i32 {\n    x + 1\n}\n",
         )
         .unwrap();
-        let (skeleton, bodies) = split(&src, Path::new(".idx")).unwrap();
+        let (skeleton, bodies) = split_source(&src, Path::new(".idx")).unwrap();
         let mut names = body_names(&bodies);
         names.sort();
         assert_eq!(names, vec!["alpha", "beta"]);
@@ -740,7 +356,7 @@ mod tests {
             "fn tricky() {\n    let s = \"}}}\";\n    let c = '}';\n    if true { let _ = 0; }\n}\nfn after() {}\n",
         )
         .unwrap();
-        let (_skel, bodies) = split(&src, Path::new(".idx")).unwrap();
+        let (_skel, bodies) = split_source(&src, Path::new(".idx")).unwrap();
         let mut names = body_names(&bodies);
         names.sort();
         assert_eq!(names, vec!["after", "tricky"]);
@@ -762,7 +378,7 @@ mod tests {
             "impl A {\n    fn new() {\n        let _ = 1;\n    }\n}\nimpl Tr for B {\n    fn new() {\n        let _ = 2;\n    }\n}\n",
         )
         .unwrap();
-        let (_skel, bodies) = split(&src, Path::new(".idx")).unwrap();
+        let (_skel, bodies) = split_source(&src, Path::new(".idx")).unwrap();
         let mut names = body_names(&bodies);
         names.sort();
         assert_eq!(names, vec!["A.new", "B.new"]);
@@ -777,8 +393,38 @@ mod tests {
             "trait T {\n    fn no_body(&self);\n}\nfn has_body() {\n    let _ = 1;\n}\n",
         )
         .unwrap();
-        let (_skel, bodies) = split(&src, Path::new(".idx")).unwrap();
+        let (_skel, bodies) = split_source(&src, Path::new(".idx")).unwrap();
         assert_eq!(body_names(&bodies), vec!["has_body"]);
+    }
+
+    #[test]
+    fn python_docstrings_never_index_phantom_defs() {
+        let dir = tmp();
+        let src = dir.join("doc.py");
+        // "def phantom" inside a docstring must not become a body, and the
+        // dedented string content must not truncate the real fn's extent.
+        std::fs::write(
+            &src,
+            "\"\"\"module doc\ndef phantom(x):\n    pass\n\"\"\"\n\ndef real(x):\n    s = \"\"\"\nnot code\n\"\"\"\n    return x\n",
+        )
+        .unwrap();
+        let (_skel, bodies) = split_source(&src, Path::new(".idx")).unwrap();
+        assert_eq!(body_names(&bodies), vec!["real"]);
+        assert!(bodies[0].content.contains("return x"));
+    }
+
+    #[test]
+    fn nested_defs_extract_outermost_only() {
+        let dir = tmp();
+        let src = dir.join("nest.py");
+        std::fs::write(
+            &src,
+            "def outer(x):\n    def inner(y):\n        return y\n    return inner(x)\n",
+        )
+        .unwrap();
+        let (_skel, bodies) = split_source(&src, Path::new(".idx")).unwrap();
+        assert_eq!(body_names(&bodies), vec!["outer"]);
+        assert!(bodies[0].content.contains("def inner"));
     }
 
     #[test]
@@ -786,7 +432,7 @@ mod tests {
         let dir = tmp();
         let src = dir.join("data.txt");
         std::fs::write(&src, "line one\nline two\n").unwrap();
-        let (skeleton, bodies) = split_for_ext(&src, Path::new(".idx"), "txt").unwrap();
+        let (skeleton, bodies) = split_source(&src, Path::new(".idx")).unwrap();
         assert_eq!(body_names(&bodies), vec!["_body"]);
         assert!(skeleton.contains("§source"));
         assert!(bodies[0].content.contains("line one"));
@@ -797,7 +443,7 @@ mod tests {
         let dir = tmp();
         let src = dir.join("empty.rs");
         std::fs::write(&src, "// just a comment\n").unwrap();
-        let (_skel, bodies) = split(&src, Path::new(".idx")).unwrap();
+        let (_skel, bodies) = split_source(&src, Path::new(".idx")).unwrap();
         assert!(bodies.is_empty());
     }
 }

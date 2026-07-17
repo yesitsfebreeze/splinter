@@ -4,7 +4,7 @@
 
 ## Build & test
 
-- `cargo build` — needs `rustup target add wasm32-wasip1` for the embedded language modules
+- `cargo build` — plain stable Rust; language grammars are tree-sitter wasm, downloaded on first use (needs network once per grammar)
 - `cargo test` — unit + end-to-end MCP tests (the e2e tests drive the real binary over JSON-RPC)
 - `cargo clippy --all-targets -- -D warnings` and `cargo fmt` must stay clean (CI enforces both)
 

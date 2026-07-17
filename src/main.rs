@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 
+mod engine;
 mod language;
 mod mcp;
 mod search;
@@ -38,7 +39,14 @@ async fn main() -> Result<()> {
 
     let index_dir = PathBuf::from(".splinter");
     let src_dir = PathBuf::from(cfg("SPLINTER_SRC_DIR", &ini, "src"));
-    let ext = cfg("SPLINTER_EXT", &ini, "rs");
+    // SPLINTER_EXT restricts indexing to a comma-separated extension list;
+    // unset means every installed language.
+    let ext = cfg("SPLINTER_EXT", &ini, "");
+    let exts: std::collections::BTreeSet<String> = if ext.trim().is_empty() {
+        language::extensions()
+    } else {
+        ext.split(',').map(|e| e.trim().to_string()).collect()
+    };
 
     // Propagate ini values as env vars so the watcher (SPLINTER_DEBOUNCE_MS) and
     // tools (SPLINTER_MAX_LOC) can read them without re-parsing the ini.
@@ -48,12 +56,14 @@ async fn main() -> Result<()> {
         }
     }
 
-    if index_dir.exists() && src_dir.exists() {
+    // The watcher runs even before the index exists — it stays silent until
+    // index_dir bootstraps .splinter/, so a mid-session bootstrap isn't stale
+    // until restart.
+    if src_dir.exists() {
         let i = index_dir.clone();
         let s = src_dir.clone();
-        let e = ext.clone();
         std::thread::spawn(move || {
-            if let Err(err) = watcher::watch(&s, &i, &e) {
+            if let Err(err) = watcher::watch(&s, &i, &exts) {
                 eprintln!("splinter watcher: {err}");
             }
         });

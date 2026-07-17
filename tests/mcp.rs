@@ -538,12 +538,181 @@ fn ruby_extracts_methods_and_singleton_methods() {
 }
 
 #[test]
+fn tsx_routes_to_tsx_grammar() {
+    let dir = index_lang(
+        "tsx",
+        "function App(): JSX.Element {\n  return <div>hi</div>;\n}\n\nclass Widget {\n  render(): JSX.Element {\n    return <span />;\n  }\n}\n",
+    );
+    assert!(dir.join(".splinter/src/m/App.fs").exists());
+    assert!(dir.join(".splinter/src/m/Widget.render.fs").exists());
+}
+
+// Any language can be added without touching splinter: drop a tree-sitter
+// grammar wasm + an extraction query into .splinter/languages/. Here the lua
+// grammar is aliased to a made-up `.luax` extension.
+#[test]
+fn project_grammar_override_adds_a_language() {
+    let dir = workdir();
+    // Force the lua grammar into the shared cache, then alias it.
+    std::fs::write(dir.join("src/warm.lua"), "function w()\n  return 1\nend\n").unwrap();
+    let out = drive(
+        &dir,
+        &[call(
+            1,
+            "index_dir",
+            serde_json::json!({ "src_dir": "src" }),
+        )],
+    );
+    assert!(out[0].contains("indexed 1 files"), "warmup: {}", out[0]);
+
+    let cache = dirs_home().join(".config/splinter/grammars");
+    let lua_wasm = std::fs::read_dir(&cache)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .find(|p| p.file_name().unwrap().to_string_lossy().starts_with("lua-"))
+        .expect("lua grammar cached by warmup");
+    let ovr = dir.join(".splinter/languages");
+    std::fs::create_dir_all(&ovr).unwrap();
+    std::fs::copy(&lua_wasm, ovr.join("luax.wasm")).unwrap();
+    std::fs::write(
+        ovr.join("luax.scm"),
+        "; grammar: lua\n(function_declaration name: (identifier) @name body: (block) @body) @def\n",
+    )
+    .unwrap();
+
+    std::fs::write(
+        dir.join("src/n.luax"),
+        "function custom(x)\n  return x\nend\n",
+    )
+    .unwrap();
+    let out = drive(
+        &dir,
+        &[call(
+            1,
+            "open_source",
+            serde_json::json!({ "source_path": "src/n.luax" }),
+        )],
+    );
+    assert!(out[0].contains("custom"), "override split: {}", out[0]);
+    assert!(dir.join(".splinter/src/n/custom.fs").exists());
+}
+
+fn dirs_home() -> PathBuf {
+    PathBuf::from(
+        std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap(),
+    )
+}
+
+// SQL has no distributable tree-sitter grammar wasm, so it splits via the
+// pattern tier: CREATE statements name the definition, dollar-quote or
+// BEGIN/END scope delimits the body.
+#[test]
 fn sql_extracts_dollar_quoted_function() {
     let dir = index_lang(
         "sql",
         "CREATE FUNCTION add_one(n int) RETURNS int AS $$\nBEGIN\n  RETURN n + 1;\nEND;\n$$ LANGUAGE plpgsql;\n",
     );
     assert!(dir.join(".splinter/src/m/add_one.fs").exists());
+    let body = std::fs::read_to_string(dir.join(".splinter/src/m/add_one.fs")).unwrap();
+    assert!(body.contains("RETURN n + 1"), "body extracted: {body}");
+}
+
+#[test]
+fn sql_extracts_tagged_quote_and_begin_end_procedures() {
+    let dir = index_lang(
+        "sql",
+        "CREATE OR REPLACE FUNCTION tagged() RETURNS int AS $body$\n  SELECT 1;\n$body$ LANGUAGE sql;\n\nCREATE PROCEDURE nested_blocks()\nLANGUAGE plpgsql\nAS $$\nBEGIN\n  BEGIN\n    RETURN;\n  END;\nEND;\n$$;\n",
+    );
+    assert!(dir.join(".splinter/src/m/tagged.fs").exists());
+    assert!(dir.join(".splinter/src/m/nested_blocks.fs").exists());
+    let nested = std::fs::read_to_string(dir.join(".splinter/src/m/nested_blocks.fs")).unwrap();
+    assert!(
+        nested.contains("RETURN"),
+        "nested BEGIN/END stays whole: {nested}"
+    );
+}
+
+#[test]
+fn index_dir_without_ext_indexes_every_language() {
+    let dir = workdir();
+    std::fs::write(dir.join("src/a.rs"), "fn ra() {\n    let _ = 1;\n}\n").unwrap();
+    std::fs::write(dir.join("src/b.py"), "def pb(x):\n    return x\n").unwrap();
+    std::fs::write(
+        dir.join("src/c.go"),
+        "package m\n\nfunc gc() int {\n\treturn 1\n}\n",
+    )
+    .unwrap();
+    let out = drive(
+        &dir,
+        &[call(
+            1,
+            "index_dir",
+            serde_json::json!({ "src_dir": "src" }),
+        )],
+    );
+    assert!(out[0].contains("indexed 3 files"), "polyglot: {}", out[0]);
+    assert!(dir.join(".splinter/src/a/ra.fs").exists());
+    assert!(dir.join(".splinter/src/b/pb.fs").exists());
+    assert!(dir.join(".splinter/src/c/gc.fs").exists());
+}
+
+#[test]
+fn read_body_resolves_index_relative_and_rejects_source() {
+    let dir = workdir();
+    std::fs::write(dir.join("src/r.rs"), "fn f() {\n    let x = 7;\n}\n").unwrap();
+    let out = drive(
+        &dir,
+        &[
+            call(1, "index_dir", serde_json::json!({ "src_dir": "src" })),
+            // search_names returns index-relative paths — they must feed read_body.
+            call(2, "read_body", serde_json::json!({ "path": "src/r/f.fs" })),
+            call(3, "read_body", serde_json::json!({ "path": "src/r.rs" })),
+        ],
+    );
+    assert!(
+        out[1].contains("let x = 7"),
+        "index-relative path resolves: {}",
+        out[1]
+    );
+    assert!(
+        out[2].contains("open_source"),
+        "source path must be rejected with a hint: {}",
+        out[2]
+    );
+}
+
+#[test]
+fn ref_graph_lists_defs_for_ambiguous_bare_name() {
+    let dir = workdir();
+    std::fs::write(
+        dir.join("src/q.rs"),
+        "struct A;\nstruct B;\nimpl A {\n    pub fn new() -> A {\n        A\n    }\n}\nimpl B {\n    pub fn new() -> B {\n        B\n    }\n}\n",
+    )
+    .unwrap();
+    let out = drive(
+        &dir,
+        &[
+            call(1, "index_dir", serde_json::json!({ "src_dir": "src" })),
+            call(2, "ref_graph", serde_json::json!({ "path": "new" })),
+            // A qualified name resolves without the listing.
+            call(3, "ref_graph", serde_json::json!({ "path": "A.new" })),
+        ],
+    );
+    assert!(
+        out[1].contains("2 defs match `new`"),
+        "ambiguous name lists defs: {}",
+        out[1]
+    );
+    assert!(out[1].contains("A.new"), "listing has A.new: {}", out[1]);
+    assert!(out[1].contains("B.new"), "listing has B.new: {}", out[1]);
+    assert!(
+        out[2].contains("fn: A.new"),
+        "qualified name resolves: {}",
+        out[2]
+    );
 }
 
 #[test]

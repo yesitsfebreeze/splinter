@@ -18,14 +18,14 @@ For indexed source, use the index first; open the raw file only if you still nee
 
 ## Tools
 
-- `index_dir(src_dir)` — bootstrap: split a whole tree. Run once if `.splinter/` is empty.
+- `index_dir(src_dir)` — bootstrap: split a whole tree, every installed language at once. Run once if `.splinter/` is empty.
 - `open_source(source_path)` — function list with signatures, by size (⚠ over `SPLINTER_MAX_LOC`) + the file's splinter note.
-- `read_body(path)` — one function body. First line is `§head <src>:<start>-<end> <name>`.
+- `read_body(path)` — one function body (`.fs` path; index-relative works). First line is `§head <src>:<start>-<end> <name>`. Rejects source files — use `open_source`.
 - `search_bodies(query)` — grep across every indexed function; each hit maps back to `source:line [fn]`.
 - `search_names(query)` — regex over fn names + source paths only; returns paths, token-cheap.
 - `grep_files(query)` — ripgrep raw source under a root; finds matches even in unindexed files.
 - `grep_source(query)` — unified search across skeletons and bodies (`scope`: all | skel | body).
-- `ref_graph(path)` — call graph for a fn name or `.fs` body: callers (`in`) and callees (`out`).
+- `ref_graph(path)` — call graph for a fn name or `.fs` body: callers (`in`) and callees (`out`). An ambiguous bare name lists the qualified candidates instead.
 - `outline(path)` — symbol map of a body/skeleton: fns, impls, structs, enums, traits, modules.
 - `list_bodies(dir)` — functions in a dir, by size.
 - `find_large()` — functions over `SPLINTER_MAX_LOC`.
@@ -34,7 +34,7 @@ For indexed source, use the index first; open the raw file only if you still nee
 - `diff_body(path)` — diff a body against the function's current region in the source.
 - `body_stats(path)` — loc, bytes, refs in, mtime, origin source for one body.
 - `validate(fix)` — index integrity check; `fix=true` purges orphans, dead refs, stale entries.
-- `list_languages()` — installed extensions (17 builtin languages; drop a WASM module for more).
+- `list_languages()` — installed extensions (17 builtin: 16 tree-sitter grammars auto-downloaded + sql via pattern tier; drop a grammar wasm + `.scm` query for more).
 
 ## Use instead of
 
@@ -46,4 +46,4 @@ For indexed source, use the index first; open the raw file only if you still nee
 
 ## Config (env vars or `splinter.ini`)
 
-`SPLINTER_SRC_DIR=src` · `SPLINTER_EXT=rs` · `SPLINTER_MAX_LOC=256` · `SPLINTER_DEBOUNCE_MS=500`
+`SPLINTER_SRC_DIR=src` · `SPLINTER_EXT` (unset = every installed language; set a comma-separated list to restrict) · `SPLINTER_MAX_LOC=256` · `SPLINTER_DEBOUNCE_MS=500`
