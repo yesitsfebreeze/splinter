@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Claude Code plugins by yesitsfebreeze",
-    "version": "0.1.18"
+    "version": "0.1.19"
   },
   "plugins": [
     {
       "name": "splinter",
       "source": "./",
       "description": "Fn-level code index MCP server. Splits source files into per-function body files under .splinter/. Token-efficient: open_source returns fn map, read_body loads one fn, search_bodies greps 3000+ fns in ~50 tokens. Each source file gets a persistent splinter note for durable agent memory. One-way watcher re-splits on source change. WASM language modules for any language.",
-      "version": "0.1.18",
+      "version": "0.1.19",
       "author": {
         "name": "yesitsfebreeze"
       },
