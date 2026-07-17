@@ -1,28 +1,8 @@
 # build artifacts
 target/
-languages/rs/target/
-languages/py/target/
-languages/odin/target/
-languages/go/target/
-languages/php/target/
-languages/html/target/
-languages/cpp/target/
-languages/js/target/
-languages/ts/target/
-languages/java/target/
-languages/cs/target/
-languages/kt/target/
-languages/swift/target/
-languages/sh/target/
-languages/lua/target/
-languages/rb/target/
-languages/sql/target/
 
-# generated index (not source of truth) — but keep the splinter notes,
-# they are durable agent memory, not derived cache.
-.splinter/**
-!.splinter/**/
-!.splinter/**/*.splinter.md
+# generated index (not source of truth)
+.splinter/
 
 # local env overrides (splinter.ini is safe to commit)
 .env
