@@ -34,7 +34,7 @@ For indexed source, use the index first; open the raw file only if you still nee
 - `diff_body(path)` — diff a body against the function's current region in the source.
 - `body_stats(path)` — loc, bytes, refs in, mtime, origin source for one body.
 - `validate(fix)` — index integrity check; `fix=true` purges orphans, dead refs, stale entries.
-- `list_languages()` — installed extensions (17 builtin: 16 tree-sitter grammars auto-downloaded + sql via pattern tier; drop a grammar wasm + `.scm` query for more).
+- `list_languages()` — installed extensions (17 languages out of the box via embedded tree-sitter, grammars auto-download; drop a grammar wasm + `.scm` query for more).
 
 ## Use instead of
 
