@@ -1,6 +1,6 @@
 {
   "name": "splinter",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "description": "Fn-level code index MCP server. Splits source files into per-function body files for token-efficient navigation, with a persistent per-file splinter note for agent memory. Watcher re-splits on source change.",
   "author": {
     "name": "febreeze",
